@@ -208,6 +208,7 @@ export class EmailService {
     consultaData: {
       pacienteNombre: string;
       medicoNombre: string;
+      medicoTituloNombre?: string; // Ej: "Dr. Juan Pérez" o "Dra. María López"
       fecha: string;
       hora: string;
       motivo: string;
@@ -246,6 +247,7 @@ export class EmailService {
     consultaData: {
       pacienteNombre: string;
       medicoNombre: string;
+      medicoTituloNombre?: string;
       fechaAnterior: string;
       horaAnterior: string;
       fechaNueva: string;
@@ -256,13 +258,17 @@ export class EmailService {
     }
   ): Promise<{ paciente: boolean; medico: boolean }> {
     const results = { paciente: false, medico: false };
+    const variables = {
+      ...consultaData,
+      medicoTituloNombre: consultaData.medicoTituloNombre ?? `Dr. ${consultaData.medicoNombre}`
+    };
 
     // Email al paciente
     const pacienteTemplate = this.getReagendamientoPacienteTemplate();
     results.paciente = await this.sendTemplateEmail(
       pacienteEmail,
       pacienteTemplate,
-      consultaData
+      variables
     );
 
     // Email al médico
@@ -270,7 +276,7 @@ export class EmailService {
     results.medico = await this.sendTemplateEmail(
       medicoEmail,
       medicoTemplate,
-      consultaData
+      variables
     );
 
     return results;
@@ -285,6 +291,7 @@ export class EmailService {
     consultaData: {
       pacienteNombre: string;
       medicoNombre: string;
+      medicoTituloNombre?: string;
       fecha: string;
       hora: string;
       motivo: string;
@@ -294,13 +301,17 @@ export class EmailService {
     }
   ): Promise<{ paciente: boolean; medico: boolean }> {
     const results = { paciente: false, medico: false };
+    const variables = {
+      ...consultaData,
+      medicoTituloNombre: consultaData.medicoTituloNombre ?? `Dr. ${consultaData.medicoNombre}`
+    };
 
     // Email al paciente
     const pacienteTemplate = this.getFinalizacionPacienteTemplate();
     results.paciente = await this.sendTemplateEmail(
       pacienteEmail,
       pacienteTemplate,
-      consultaData
+      variables
     );
 
     // Email al médico
@@ -308,7 +319,7 @@ export class EmailService {
     results.medico = await this.sendTemplateEmail(
       medicoEmail,
       medicoTemplate,
-      consultaData
+      variables
     );
 
     return results;
@@ -323,6 +334,7 @@ export class EmailService {
     consultaData: {
       pacienteNombre: string;
       medicoNombre: string;
+      medicoTituloNombre?: string;
       fecha: string;
       hora: string;
       motivo: string;
@@ -336,6 +348,10 @@ export class EmailService {
     console.log('📧 EmailService - Datos:', consultaData);
 
     const results = { paciente: false, medico: false };
+    const variables = {
+      ...consultaData,
+      medicoTituloNombre: consultaData.medicoTituloNombre ?? `Dr. ${consultaData.medicoNombre}`
+    };
 
     // Email al paciente
     console.log('📧 Enviando email al paciente...');
@@ -343,7 +359,7 @@ export class EmailService {
     results.paciente = await this.sendTemplateEmail(
       pacienteEmail,
       pacienteTemplate,
-      consultaData
+      variables
     );
     console.log('📧 Resultado email paciente:', results.paciente);
 
@@ -353,7 +369,7 @@ export class EmailService {
     results.medico = await this.sendTemplateEmail(
       medicoEmail,
       medicoTemplate,
-      consultaData
+      variables
     );
     console.log('📧 Resultado email médico:', results.medico);
 
@@ -369,17 +385,18 @@ export class EmailService {
     consultaData: {
       pacienteNombre: string;
       medicoNombre: string;
+      medicoTituloNombre?: string;
       fecha: string;
       hora: string;
       motivo: string;
     }
   ): Promise<boolean> {
     const template = this.getConsultaReminderTemplate();
-    return await this.sendTemplateEmail(
-      pacienteEmail,
-      template,
-      consultaData
-    );
+    const variables = {
+      ...consultaData,
+      medicoTituloNombre: consultaData.medicoTituloNombre ?? `Dr. ${consultaData.medicoNombre}`
+    };
+    return await this.sendTemplateEmail(pacienteEmail, template, variables);
   }
 
   /**
@@ -447,6 +464,7 @@ export class EmailService {
     userEmail: string,
     medicoData: {
       nombre: string;
+      tituloNombre?: string; // "Dr. Juan Pérez" o "Dra. María López" según sexo
       username: string;
       userEmail: string;
       otp: string;
@@ -454,11 +472,11 @@ export class EmailService {
     }
   ): Promise<boolean> {
     const template = this.getMedicoWelcomeTemplate();
-    return await this.sendTemplateEmail(
-      userEmail,
-      template,
-      medicoData
-    );
+    const variables = {
+      ...medicoData,
+      tituloNombre: medicoData.tituloNombre ?? `Dr./Dra. ${medicoData.nombre}`
+    };
+    return await this.sendTemplateEmail(userEmail, template, variables);
   }
 
   // ===== PLANTILLAS DE EMAIL =====
@@ -475,9 +493,9 @@ export class EmailService {
           <style>
             body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
             .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-            .header { background: linear-gradient(135deg, #E91E63, #C2185B); color: white; padding: 30px 20px; text-align: center; }
+            .header { background: linear-gradient(135deg, #1976D2, #2196F3); color: white; padding: 30px 20px; text-align: center; }
             .content { padding: 20px; background: #f9f9f9; }
-            .info-box { background: white; padding: 15px; margin: 10px 0; border-left: 4px solid #E91E63; }
+            .info-box { background: white; padding: 15px; margin: 10px 0; border-left: 4px solid #2196F3; }
             .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
           </style>
         </head>
@@ -496,7 +514,7 @@ export class EmailService {
                 <h3>📅 Información de la Consulta</h3>
                 <p><strong>Fecha:</strong> {{fecha}}</p>
                 <p><strong>Hora:</strong> {{hora}}</p>
-                <p><strong>Médico:</strong> Dr./Dra. {{medicoNombre}}</p>
+                <p><strong>Médico:</strong> {{medicoTituloNombre}}</p>
                 <p><strong>Motivo:</strong> {{motivo}}</p>
                 <p><strong>Tipo:</strong> {{tipo}}</p>
                 <p><strong>Duración estimada:</strong> {{duracion}} minutos</p>
@@ -530,7 +548,7 @@ export class EmailService {
         
         Fecha: {{fecha}}
         Hora: {{hora}}
-        Médico: Dr./Dra. {{medicoNombre}}
+        Médico: {{medicoTituloNombre}}
         Motivo: {{motivo}}
         Tipo: {{tipo}}
         Duración: {{duracion}} minutos
@@ -559,11 +577,11 @@ export class EmailService {
           <style>
             body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
             .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-            .header { background: #E91E63; color: white; padding: 20px; text-align: center; }
+            .header { background: linear-gradient(135deg, #1976D2, #2196F3); color: white; padding: 20px; text-align: center; }
             .content { padding: 20px; background: #f9f9f9; }
-            .otp-box { background: #fff; padding: 20px; margin: 20px 0; text-align: center; border: 2px solid #E91E63; border-radius: 8px; }
-            .otp-code { font-size: 32px; font-weight: bold; color: #E91E63; letter-spacing: 5px; }
-            .info-box { background: white; padding: 15px; margin: 10px 0; border-left: 4px solid #E91E63; }
+            .otp-box { background: #fff; padding: 20px; margin: 20px 0; text-align: center; border: 2px solid #2196F3; border-radius: 8px; }
+            .otp-code { font-size: 32px; font-weight: bold; color: #1976D2; letter-spacing: 5px; }
+            .info-box { background: white; padding: 15px; margin: 10px 0; border-left: 4px solid #2196F3; }
             .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
             .warning { background: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 5px; margin: 15px 0; }
           </style>
@@ -575,7 +593,7 @@ export class EmailService {
               <h2>¡Bienvenido!</h2>
             </div>
             <div class="content">
-              <p>Estimado/a Dr./Dra. <strong>{{nombre}}</strong>,</p>
+              <p>Estimado/a <strong>{{tituloNombre}}</strong>,</p>
               
               <p>¡Bienvenido! Su cuenta de médico ha sido creada exitosamente y ya puede acceder al sistema.</p>
               
@@ -626,7 +644,7 @@ export class EmailService {
       text: `
         Bienvenido - Acceso al Sistema
         
-        Estimado/a Dr./Dra. {{nombre}},
+        Estimado/a {{tituloNombre}},
         
         ¡Bienvenido! Su cuenta de médico ha sido creada exitosamente.
         
@@ -671,9 +689,9 @@ export class EmailService {
           <style>
             body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
             .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-            .header { background: linear-gradient(135deg, #2c3e50, #34495e); color: white; padding: 30px 20px; text-align: center; }
+            .header { background: linear-gradient(135deg, #1976D2, #2196F3); color: white; padding: 30px 20px; text-align: center; }
             .content { padding: 20px; background: #f9f9f9; }
-            .info-box { background: white; padding: 15px; margin: 10px 0; border-left: 4px solid #2c3e50; }
+            .info-box { background: white; padding: 15px; margin: 10px 0; border-left: 4px solid #2196F3; }
             .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
           </style>
         </head>
@@ -684,18 +702,16 @@ export class EmailService {
               <p>${config.sistema.clinicaNombre}</p>
             </div>
             <div class="content">
-              <p>Dr./Dra. <strong>{{medicoNombre}}</strong>,</p>
-              
-              <p>Se ha agendado una nueva consulta en su agenda:</p>
+              <p><strong>Usted tiene una consulta agendada.</strong></p>
               
               <div class="info-box">
-                <h3>📋 Detalles de la Consulta</h3>
+                <h3>📋 Información de la Consulta</h3>
                 <p><strong>Paciente:</strong> {{pacienteNombre}}</p>
                 <p><strong>Fecha:</strong> {{fecha}}</p>
                 <p><strong>Hora:</strong> {{hora}}</p>
                 <p><strong>Motivo:</strong> {{motivo}}</p>
                 <p><strong>Tipo:</strong> {{tipo}}</p>
-                <p><strong>Duración:</strong> {{duracion}} minutos</p>
+                <p><strong>Duración estimada:</strong> {{duracion}} minutos</p>
                 <p><strong>Observaciones:</strong> {{observaciones}}</p>
               </div>
               
@@ -725,7 +741,7 @@ export class EmailService {
           <style>
             body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
             .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-            .header { background: #f39c12; color: white; padding: 20px; text-align: center; }
+            .header { background: linear-gradient(135deg, #1976D2, #2196F3); color: white; padding: 20px; text-align: center; }
             .content { padding: 20px; background: #f9f9f9; }
             .info-box { background: white; padding: 15px; margin: 10px 0; border-left: 4px solid #f39c12; }
             .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
@@ -746,7 +762,7 @@ export class EmailService {
                 <h3>📅 Su Próxima Consulta</h3>
                 <p><strong>Fecha:</strong> {{fecha}}</p>
                 <p><strong>Hora:</strong> {{hora}}</p>
-                <p><strong>Médico:</strong> Dr./Dra. {{medicoNombre}}</p>
+                <p><strong>Médico:</strong> {{medicoTituloNombre}}</p>
                 <p><strong>Motivo:</strong> {{motivo}}</p>
               </div>
               
@@ -783,7 +799,7 @@ export class EmailService {
           <style>
             body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
             .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-            .header { background: #e74c3c; color: white; padding: 20px; text-align: center; }
+            .header { background: linear-gradient(135deg, #1976D2, #2196F3); color: white; padding: 20px; text-align: center; }
             .content { padding: 20px; background: #f9f9f9; }
             .otp-box { background: #fff; padding: 20px; margin: 20px 0; text-align: center; border: 2px solid #e74c3c; border-radius: 8px; }
             .otp-code { font-size: 32px; font-weight: bold; color: #e74c3c; letter-spacing: 5px; }
@@ -838,7 +854,7 @@ export class EmailService {
           <style>
             body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
             .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-            .header { background: #27ae60; color: white; padding: 20px; text-align: center; }
+            .header { background: linear-gradient(135deg, #1976D2, #2196F3); color: white; padding: 20px; text-align: center; }
             .content { padding: 20px; background: #f9f9f9; }
             .otp-box { background: #fff; padding: 20px; margin: 20px 0; text-align: center; border: 2px solid #27ae60; border-radius: 8px; }
             .otp-code { font-size: 32px; font-weight: bold; color: #27ae60; letter-spacing: 5px; }
@@ -888,9 +904,9 @@ export class EmailService {
           <style>
             body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
             .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-            .header { background: #E91E63; color: white; padding: 20px; text-align: center; }
+            .header { background: linear-gradient(135deg, #1976D2, #2196F3); color: white; padding: 20px; text-align: center; }
             .content { padding: 20px; background: #f9f9f9; }
-            .info-box { background: white; padding: 15px; margin: 10px 0; border-left: 4px solid #E91E63; }
+            .info-box { background: white; padding: 15px; margin: 10px 0; border-left: 4px solid #2196F3; }
             .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
           </style>
         </head>
@@ -941,6 +957,7 @@ export class EmailService {
       pacienteSexo: string;
       medicoRemitenteNombre: string;
       medicoRemitenteApellidos: string;
+      medicoRemitenteTituloNombre?: string; // "Dr. ..." o "Dra. ..." según sexo
       medicoRemitenteEspecialidad: string;
       motivoRemision: string;
       observaciones?: string;
@@ -949,7 +966,7 @@ export class EmailService {
   ): Promise<boolean> {
     try {
       const template = this.getRemisionNotificationTemplate();
-      
+      const defaultRemitente = `Dr. ${remisionData.medicoRemitenteNombre} ${remisionData.medicoRemitenteApellidos}`;
       const variables = {
         pacienteNombre: remisionData.pacienteNombre,
         pacienteApellidos: remisionData.pacienteApellidos,
@@ -957,6 +974,7 @@ export class EmailService {
         pacienteSexo: remisionData.pacienteSexo,
         medicoRemitenteNombre: remisionData.medicoRemitenteNombre,
         medicoRemitenteApellidos: remisionData.medicoRemitenteApellidos,
+        medicoRemitenteTituloNombre: remisionData.medicoRemitenteTituloNombre ?? defaultRemitente,
         medicoRemitenteEspecialidad: remisionData.medicoRemitenteEspecialidad,
         motivoRemision: remisionData.motivoRemision,
         observaciones: remisionData.observaciones || 'No hay observaciones adicionales',
@@ -993,15 +1011,15 @@ export class EmailService {
           <style>
             body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
             .container { max-width: 600px; margin: 0 auto; background: #fff; }
-            .header { background: linear-gradient(135deg, #E91E63, #C2185B); color: white; padding: 2rem; text-align: center; }
+            .header { background: linear-gradient(135deg, #1976D2, #2196F3); color: white; padding: 2rem; text-align: center; }
             .header h1 { margin: 0; font-size: 1.8rem; }
             .content { padding: 2rem; }
-            .patient-info { background: #f8f9fa; border-left: 4px solid #E91E63; padding: 1.5rem; margin: 1rem 0; border-radius: 0 8px 8px 0; }
+            .patient-info { background: #f8f9fa; border-left: 4px solid #2196F3; padding: 1.5rem; margin: 1rem 0; border-radius: 0 8px 8px 0; }
             .medico-info { background: #e3f2fd; border-left: 4px solid #2196F3; padding: 1.5rem; margin: 1rem 0; border-radius: 0 8px 8px 0; }
             .remision-details { background: #fff3e0; border-left: 4px solid #FF9800; padding: 1.5rem; margin: 1rem 0; border-radius: 0 8px 8px 0; }
             .footer { background: #f5f5f5; padding: 1rem; text-align: center; color: #666; font-size: 0.9rem; }
-            .btn { display: inline-block; background: #E91E63; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 1rem 0; }
-            .btn:hover { background: #C2185B; }
+            .btn { display: inline-block; background: #1976D2; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 1rem 0; }
+            .btn:hover { background: #1565C0; }
             .highlight { background: #fff3cd; padding: 1rem; border-radius: 6px; border-left: 4px solid #ffc107; margin: 1rem 0; }
             .info-row { display: flex; justify-content: space-between; margin: 0.5rem 0; }
             .info-label { font-weight: bold; color: #555; }
@@ -1038,7 +1056,7 @@ export class EmailService {
                 <h3>👨‍⚕️ Médico Remitente</h3>
                 <div class="info-row">
                   <span class="info-label">Nombre:</span>
-                  <span class="info-value">Dr. {{medicoRemitenteNombre}} {{medicoRemitenteApellidos}}</span>
+                  <span class="info-value">{{medicoRemitenteTituloNombre}}</span>
                 </div>
                 <div class="info-row">
                   <span class="info-label">Especialidad:</span>
@@ -1096,7 +1114,7 @@ export class EmailService {
           <style>
             body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
             .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-            .header { background: linear-gradient(135deg, #e74c3c, #c0392b); color: white; padding: 30px 20px; text-align: center; }
+            .header { background: linear-gradient(135deg, #1976D2, #2196F3); color: white; padding: 30px 20px; text-align: center; }
             .content { padding: 20px; background: #f9f9f9; }
             .info-row { display: flex; margin: 10px 0; }
             .info-label { font-weight: bold; width: 150px; }
@@ -1126,7 +1144,7 @@ export class EmailService {
                 <h3>📅 Información de la Consulta Cancelada</h3>
                 <div class="info-row">
                   <span class="info-label">Médico:</span>
-                  <span class="info-value">{{medicoNombre}}</span>
+                  <span class="info-value">{{medicoTituloNombre}}</span>
                 </div>
                 <div class="info-row">
                   <span class="info-label">Fecha:</span>
@@ -1176,7 +1194,7 @@ export class EmailService {
         Le informamos que su consulta médica ha sido cancelada.
         
         Detalles de la consulta cancelada:
-        - Médico: {{medicoNombre}}
+        - Médico: {{medicoTituloNombre}}
         - Fecha: {{fecha}}
         - Hora: {{hora}}
         - Tipo: {{tipo}}
@@ -1203,7 +1221,7 @@ export class EmailService {
           <style>
             body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
             .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-            .header { background: linear-gradient(135deg, #e74c3c, #c0392b); color: white; padding: 30px 20px; text-align: center; }
+            .header { background: linear-gradient(135deg, #1976D2, #2196F3); color: white; padding: 30px 20px; text-align: center; }
             .content { padding: 20px; background: #f9f9f9; }
             .info-row { display: flex; margin: 10px 0; }
             .info-label { font-weight: bold; width: 150px; }
@@ -1225,7 +1243,7 @@ export class EmailService {
                 <strong>⚠️ Una consulta ha sido cancelada</strong>
               </div>
               
-              <p>Estimado/a Dr./Dra. <strong>{{medicoNombre}}</strong>,</p>
+              <p>Estimado/a <strong>{{medicoTituloNombre}}</strong>,</p>
               
               <p>Le informamos que una consulta en su agenda ha sido cancelada. A continuación, los detalles:</p>
               
@@ -1278,7 +1296,7 @@ export class EmailService {
       text: `
         CONSULTA CANCELADA
         
-        Estimado/a Dr./Dra. {{medicoNombre}},
+        Estimado/a {{medicoTituloNombre}},
         
         Le informamos que una consulta en su agenda ha sido cancelada.
         
@@ -1313,7 +1331,7 @@ export class EmailService {
           <style>
             body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
             .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-            .header { background: #f39c12; color: white; padding: 20px; text-align: center; }
+            .header { background: linear-gradient(135deg, #1976D2, #2196F3); color: white; padding: 20px; text-align: center; }
             .content { padding: 20px; background: #f9f9f9; }
             .info-row { display: flex; margin: 10px 0; }
             .info-label { font-weight: bold; width: 150px; }
@@ -1364,7 +1382,7 @@ export class EmailService {
                 <h3>📋 Información de la Consulta</h3>
                 <div class="info-row">
                   <span class="info-label">Médico:</span>
-                  <span class="info-value">{{medicoNombre}}</span>
+                  <span class="info-value">{{medicoTituloNombre}}</span>
                 </div>
                 <div class="info-row">
                   <span class="info-label">Motivo:</span>
@@ -1412,7 +1430,7 @@ export class EmailService {
         - Nueva hora: {{horaNueva}}
         
         Información de la consulta:
-        - Médico: {{medicoNombre}}
+        - Médico: {{medicoTituloNombre}}
         - Motivo: {{motivo}}
         - Tipo: {{tipo}}
         - Observaciones: {{observaciones}}
@@ -1440,7 +1458,7 @@ export class EmailService {
           <style>
             body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
             .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-            .header { background: #f39c12; color: white; padding: 20px; text-align: center; }
+            .header { background: linear-gradient(135deg, #1976D2, #2196F3); color: white; padding: 20px; text-align: center; }
             .content { padding: 20px; background: #f9f9f9; }
             .info-row { display: flex; margin: 10px 0; }
             .info-label { font-weight: bold; width: 150px; }
@@ -1463,7 +1481,7 @@ export class EmailService {
                 <strong>⚠️ Una consulta ha sido reagendada</strong>
               </div>
               
-              <p>Estimado/a Dr./Dra. <strong>{{medicoNombre}}</strong>,</p>
+              <p>Estimado/a <strong>{{medicoTituloNombre}}</strong>,</p>
               
               <p>Le informamos que una consulta en su agenda ha sido reagendada. A continuación, los detalles del cambio:</p>
               
@@ -1528,7 +1546,7 @@ export class EmailService {
       text: `
         CONSULTA REAGENDADA - ${config.sistema.clinicaNombre}
         
-        Estimado/a Dr./Dra. {{medicoNombre}},
+        Estimado/a {{medicoTituloNombre}},
         
         Le informamos que una consulta en su agenda ha sido reagendada.
         
@@ -1567,7 +1585,7 @@ export class EmailService {
           <style>
             body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
             .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-            .header { background: #27ae60; color: white; padding: 20px; text-align: center; }
+            .header { background: linear-gradient(135deg, #1976D2, #2196F3); color: white; padding: 20px; text-align: center; }
             .content { padding: 20px; background: #f9f9f9; }
             .info-row { display: flex; margin: 10px 0; }
             .info-label { font-weight: bold; width: 150px; }
@@ -1598,7 +1616,7 @@ export class EmailService {
                 <h3>📅 Información de la Consulta</h3>
                 <div class="info-row">
                   <span class="info-label">Médico:</span>
-                  <span class="info-value">{{medicoNombre}}</span>
+                  <span class="info-value">{{medicoTituloNombre}}</span>
                 </div>
                 <div class="info-row">
                   <span class="info-label">Fecha:</span>
@@ -1653,7 +1671,7 @@ export class EmailService {
         Le informamos que su consulta médica ha sido finalizada exitosamente.
         
         Información de la consulta:
-        - Médico: {{medicoNombre}}
+        - Médico: {{medicoTituloNombre}}
         - Fecha: {{fecha}}
         - Hora: {{hora}}
         - Motivo: {{motivo}}
@@ -1690,7 +1708,7 @@ export class EmailService {
           <style>
             body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
             .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-            .header { background: #27ae60; color: white; padding: 20px; text-align: center; }
+            .header { background: linear-gradient(135deg, #1976D2, #2196F3); color: white; padding: 20px; text-align: center; }
             .content { padding: 20px; background: #f9f9f9; }
             .info-row { display: flex; margin: 10px 0; }
             .info-label { font-weight: bold; width: 150px; }
@@ -1713,7 +1731,7 @@ export class EmailService {
                 <strong>🎉 Ha finalizado una consulta exitosamente</strong>
               </div>
               
-              <p>Estimado/a Dr./Dra. <strong>{{medicoNombre}}</strong>,</p>
+              <p>Estimado/a <strong>{{medicoTituloNombre}}</strong>,</p>
               
               <p>Le informamos que ha finalizado una consulta en su agenda. A continuación, los detalles:</p>
               
@@ -1771,7 +1789,7 @@ export class EmailService {
       text: `
         CONSULTA FINALIZADA - ${config.sistema.clinicaNombre}
         
-        Estimado/a Dr./Dra. {{medicoNombre}},
+        Estimado/a {{medicoTituloNombre}},
         
         Le informamos que ha finalizado una consulta en su agenda.
         
@@ -1816,7 +1834,7 @@ export class EmailService {
           <style>
             body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin:0; padding:0; }
             .container { max-width: 600px; margin: 0 auto; }
-            .header { background: linear-gradient(135deg, #E91E63, #C2185B); color: white; padding: 24px; text-align: center; }
+            .header { background: linear-gradient(135deg, #1976D2, #2196F3); color: white; padding: 24px; text-align: center; }
             .content { padding: 20px; background: #f9f9f9; }
             .info-box { background: white; padding: 16px; border-left: 4px solid #E91E63; margin: 12px 0; }
             .footer { text-align: center; padding: 16px; color: #666; font-size: 12px; }

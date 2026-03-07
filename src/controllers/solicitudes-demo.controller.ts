@@ -126,9 +126,13 @@ export class SolicitudesDemoController {
 
         // Enviar email de bienvenida (mismo que crear nuevo médico)
         try {
+          const sexoMed = (newMedico.sexo || '').toString().toLowerCase();
+          const tituloMed = sexoMed === 'femenino' ? 'Dra.' : 'Dr.';
+          const tituloNombre = `${tituloMed} ${nombres} ${apellidos}`.trim();
           const emailService = new EmailService();
           await emailService.sendMedicoWelcomeEmail(emailTrim, {
             nombre: `${nombres} ${apellidos}`,
+            tituloNombre,
             username,
             userEmail: emailTrim,
             otp,

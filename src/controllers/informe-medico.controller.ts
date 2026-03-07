@@ -24,6 +24,14 @@ export class InformeMedicoController {
         creado_por
       } = req.body;
 
+      const contenidoStr = typeof contenido === 'string' ? contenido : (contenido != null ? String(contenido) : '');
+      console.log('[crearInforme] contenido recibido:', {
+        length: contenidoStr.length,
+        type: typeof contenido,
+        inicio: contenidoStr.substring(0, 300),
+        fin: contenidoStr.length > 400 ? contenidoStr.substring(contenidoStr.length - 150) : '(corto)'
+      });
+
       const clinicaAlias = req.clinicaAlias;
 
       if (!clinicaAlias) {
@@ -162,6 +170,21 @@ export class InformeMedicoController {
       const { id } = req.params;
       const informeId = parseInt(id!);
       const actualizaciones = req.body;
+      console.log('[actualizarInforme] Llamada PUT informeId=', id, 'keys body:', Object.keys(actualizaciones || {}));
+
+      const c = actualizaciones?.contenido;
+      if (c !== undefined) {
+        const contenidoStr = typeof c === 'string' ? c : (c != null ? String(c) : '');
+        console.log('[actualizarInforme] contenido recibido:', {
+          informeId,
+          length: contenidoStr.length,
+          type: typeof c,
+          inicio: contenidoStr.substring(0, 300),
+          fin: contenidoStr.length > 400 ? contenidoStr.substring(contenidoStr.length - 150) : '(corto)'
+        });
+      } else {
+        console.log('[actualizarInforme] body no trae campo contenido');
+      }
 
       if (isNaN(informeId)) {
         res.status(400).json({ success: false, message: 'ID de informe inválido' });

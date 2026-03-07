@@ -2,8 +2,21 @@ import { Request, Response } from 'express';
 import { postgresPool } from '../config/database.js';
 import { ApiResponse } from '../types/index.js';
 import { EmailService } from '../services/email.service.js';
+import menuService from '../services/menu.service.js';
 
 export class ConsultaController {
+  /** Formatea hora tipo "14:00" o "14:00:00" a "2:00 PM". */
+  static formatHoraAMPM(horaStr: string | null | undefined): string {
+    if (!horaStr || typeof horaStr !== 'string') return horaStr || '';
+    const parts = horaStr.trim().split(':');
+    const h = parseInt(parts[0] ?? '', 10);
+    const m = parts[1] ? parseInt(parts[1], 10) : 0;
+    if (isNaN(h)) return horaStr;
+    const period = h >= 12 ? 'PM' : 'AM';
+    const h12 = h % 12 || 12;
+    return `${h12}:${m.toString().padStart(2, '0')} ${period}`;
+  }
+
   // Obtener todas las consultas con filtros
   static async getConsultas(req: Request, res: Response): Promise<void> {
     try {
@@ -691,23 +704,31 @@ export class ConsultaController {
           const pacienteData = pacienteResult.rows[0];
 
           const medicoResult = await client.query(
-            'SELECT nombres, apellidos, email FROM medicos WHERE id = $1',
+            'SELECT nombres, apellidos, email, sexo FROM medicos WHERE id = $1',
             [consultaData.medico_id]
           );
           const medicoData = medicoResult.rows[0];
 
           if (pacienteData?.email && medicoData?.email) {
             const emailService = new EmailService();
-            
+            const sexoMedico = (medicoData.sexo || '').toString().toLowerCase();
+            const tituloMedico = sexoMedico === 'femenino' ? 'Dra.' : 'Dr.';
+            const medicoTituloNombre = `${tituloMedico} ${medicoData.nombres} ${medicoData.apellidos}`.trim();
+            const horaRaw = consulta.hora_pautada ?? consultaData.hora_pautada;
+            const horaFormateada = ConsultaController.formatHoraAMPM(horaRaw);
+
             const observaciones = (consulta.observaciones || consultaData.observaciones || '').trim();
+            const fechaPautada = consulta.fecha_pautada ?? consultaData.fecha_pautada;
+            const duracionEstimada = consulta.duracion_estimada ?? consultaData.duracion_estimada ?? 30;
             const consultaInfo = {
               pacienteNombre: `${pacienteData.nombres} ${pacienteData.apellidos}`,
               medicoNombre: `${medicoData.nombres} ${medicoData.apellidos}`,
-              fecha: new Date(consultaData.fecha_pautada).toLocaleDateString('es-ES'),
-              hora: consultaData.hora_pautada,
+              medicoTituloNombre,
+              fecha: new Date(fechaPautada).toLocaleDateString('es-ES'),
+              hora: horaFormateada,
               motivo: consultaData.motivo_consulta,
               tipo: consultaData.tipo_consulta,
-              duracion: consultaData.duracion_estimada,
+              duracion: duracionEstimada,
               observaciones: observaciones || '—'
             };
 
@@ -919,7 +940,8 @@ export class ConsultaController {
             p.email as paciente_email,
             m.nombres as medico_nombres,
             m.apellidos as medico_apellidos,
-            m.email as medico_email
+            m.email as medico_email,
+            m.sexo as medico_sexo
           FROM consultas_pacientes cp
           INNER JOIN pacientes p ON cp.paciente_id = p.id
           INNER JOIN medicos m ON cp.medico_id = m.id
@@ -931,13 +953,16 @@ export class ConsultaController {
 
         if (consultaCompleta && consultaCompleta.paciente_email && consultaCompleta.medico_email) {
           console.log('📧 Enviando emails de cancelación...');
-          
+          const sexoMed = (consultaCompleta.medico_sexo || '').toString().toLowerCase();
+          const tituloMed = sexoMed === 'femenino' ? 'Dra.' : 'Dr.';
+          const medicoTituloNombre = `${tituloMed} ${consultaCompleta.medico_nombres} ${consultaCompleta.medico_apellidos}`.trim();
           const emailService = new EmailService();
           const emailData = {
             pacienteNombre: `${consultaCompleta.paciente_nombres} ${consultaCompleta.paciente_apellidos}`,
             medicoNombre: `${consultaCompleta.medico_nombres} ${consultaCompleta.medico_apellidos}`,
-            fecha: consultaCompleta.fecha_pautada,
-            hora: consultaCompleta.hora_pautada,
+            medicoTituloNombre,
+            fecha: new Date(consultaCompleta.fecha_pautada).toLocaleDateString('es-ES'),
+            hora: ConsultaController.formatHoraAMPM(consultaCompleta.hora_pautada),
             motivo: consultaCompleta.motivo_consulta,
             motivoCancelacion: motivo_cancelacion,
             tipo: consultaCompleta.tipo_consulta
@@ -985,6 +1010,26 @@ export class ConsultaController {
     }
   }
 
+  /** GET: permiso del usuario actual para finalizar consultas (según Gestión de Perfiles) */
+  static async getPermisoFinalizar(req: Request, res: Response): Promise<void> {
+    try {
+      const user = (req as any).user;
+      const rol = user?.rol;
+      if (!rol) {
+        res.json({ success: true, data: { puedeFinalizar: false } } as ApiResponse<{ puedeFinalizar: boolean }>);
+        return;
+      }
+      const puedeFinalizar = await menuService.puedeFinalizarConsulta(rol);
+      res.json({ success: true, data: { puedeFinalizar } } as ApiResponse<{ puedeFinalizar: boolean }>);
+    } catch (error) {
+      console.error('Error getPermisoFinalizar:', error);
+      res.status(500).json({
+        success: false,
+        error: { message: 'Error al obtener permiso' }
+      } as ApiResponse<null>);
+    }
+  }
+
   // Finalizar consulta
   static async finalizarConsulta(req: Request, res: Response): Promise<void> {
     try {
@@ -1021,11 +1066,20 @@ export class ConsultaController {
 
         const consultaExistente = consultaCheck.rows[0];
 
-        // Verificar que solo secretaria y administrador pueden finalizar
-        if (user && user.rol !== 'secretaria' && user.rol !== 'administrador') {
+        // Verificar permiso según Gestión de Perfiles (puede_finalizar para Consultas)
+        const rol = user?.rol;
+        if (!rol) {
           res.status(403).json({
             success: false,
-            error: { message: 'Solo secretaria y administrador pueden finalizar consultas' }
+            error: { message: 'Usuario no autenticado' }
+          } as ApiResponse<null>);
+          return;
+        }
+        const puedeFinalizar = await menuService.puedeFinalizarConsulta(rol);
+        if (!puedeFinalizar) {
+          res.status(403).json({
+            success: false,
+            error: { message: 'No tiene permiso para finalizar consultas' }
           } as ApiResponse<null>);
           return;
         }
@@ -1066,7 +1120,8 @@ export class ConsultaController {
             p.email as paciente_email,
             m.nombres as medico_nombres,
             m.apellidos as medico_apellidos,
-            m.email as medico_email
+            m.email as medico_email,
+            m.sexo as medico_sexo
           FROM consultas_pacientes cp
           INNER JOIN pacientes p ON cp.paciente_id = p.id
           INNER JOIN medicos m ON cp.medico_id = m.id
@@ -1078,13 +1133,16 @@ export class ConsultaController {
 
         if (consultaCompleta && consultaCompleta.paciente_email && consultaCompleta.medico_email) {
           console.log('📧 Enviando emails de finalización...');
-          
+          const sexoMed = (consultaCompleta.medico_sexo || '').toString().toLowerCase();
+          const tituloMed = sexoMed === 'femenino' ? 'Dra.' : 'Dr.';
+          const medicoTituloNombre = `${tituloMed} ${consultaCompleta.medico_nombres} ${consultaCompleta.medico_apellidos}`.trim();
           const emailService = new EmailService();
           const emailData = {
             pacienteNombre: `${consultaCompleta.paciente_nombres} ${consultaCompleta.paciente_apellidos}`,
             medicoNombre: `${consultaCompleta.medico_nombres} ${consultaCompleta.medico_apellidos}`,
-            fecha: consultaCompleta.fecha_pautada,
-            hora: consultaCompleta.hora_pautada,
+            medicoTituloNombre,
+            fecha: new Date(consultaCompleta.fecha_pautada).toLocaleDateString('es-ES'),
+            hora: ConsultaController.formatHoraAMPM(consultaCompleta.hora_pautada),
             motivo: consultaCompleta.motivo_consulta,
             diagnostico: '', // Ya no se usa diagnóstico preliminar
             observaciones: '', // Ya no se usa observaciones generales
@@ -1238,7 +1296,8 @@ export class ConsultaController {
             p.email as paciente_email,
             m.nombres as medico_nombres,
             m.apellidos as medico_apellidos,
-            m.email as medico_email
+            m.email as medico_email,
+            m.sexo as medico_sexo
           FROM consultas_pacientes cp
           INNER JOIN pacientes p ON cp.paciente_id = p.id
           INNER JOIN medicos m ON cp.medico_id = m.id
@@ -1250,15 +1309,19 @@ export class ConsultaController {
 
         if (consultaCompleta && consultaCompleta.paciente_email && consultaCompleta.medico_email) {
           console.log('📧 Enviando emails de reagendamiento...');
+          const sexoMed = (consultaCompleta.medico_sexo || '').toString().toLowerCase();
+          const tituloMed = sexoMed === 'femenino' ? 'Dra.' : 'Dr.';
+          const medicoTituloNombre = `${tituloMed} ${consultaCompleta.medico_nombres} ${consultaCompleta.medico_apellidos}`.trim();
           const observacionesReagendar = (consultaCompleta.observaciones || consulta?.observaciones || '').trim();
           const emailService = new EmailService();
           const emailData = {
             pacienteNombre: `${consultaCompleta.paciente_nombres} ${consultaCompleta.paciente_apellidos}`,
             medicoNombre: `${consultaCompleta.medico_nombres} ${consultaCompleta.medico_apellidos}`,
-            fechaAnterior: consultaExistente.fecha_pautada,
-            horaAnterior: consultaExistente.hora_pautada,
-            fechaNueva: consultaCompleta.fecha_pautada,
-            horaNueva: consultaCompleta.hora_pautada,
+            medicoTituloNombre,
+            fechaAnterior: new Date(consultaExistente.fecha_pautada).toLocaleDateString('es-ES'),
+            horaAnterior: ConsultaController.formatHoraAMPM(consultaExistente.hora_pautada),
+            fechaNueva: new Date(consultaCompleta.fecha_pautada).toLocaleDateString('es-ES'),
+            horaNueva: ConsultaController.formatHoraAMPM(consultaCompleta.hora_pautada),
             motivo: consultaCompleta.motivo_consulta,
             tipo: consultaCompleta.tipo_consulta,
             observaciones: observacionesReagendar || '—'

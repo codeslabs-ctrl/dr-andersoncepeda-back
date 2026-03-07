@@ -222,10 +222,14 @@ export class MedicoController {
           console.log('📧 OTP generado:', otp);
           
           const emailService = new EmailService();
+          const sexoMed = (newMedico.sexo || '').toString().toLowerCase();
+          const tituloMed = sexoMed === 'femenino' ? 'Dra.' : 'Dr.';
+          const tituloNombre = `${tituloMed} ${nombres} ${apellidos}`.trim();
           const emailSent = await emailService.sendMedicoWelcomeEmail(
             email,
             {
               nombre: `${nombres} ${apellidos}`,
+              tituloNombre,
               username,
               userEmail: email,
               otp,

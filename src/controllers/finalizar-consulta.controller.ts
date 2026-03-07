@@ -1,4 +1,5 @@
 import { postgresPool } from '../config/database.js';
+import menuService from '../services/menu.service.js';
 
 export class FinalizarConsultaController {
   
@@ -46,13 +47,19 @@ export class FinalizarConsultaController {
           
           const consulta = consultaResult.rows[0];
           
-          // Verificar que solo secretaria y administrador pueden finalizar
+          // Verificar permiso según Gestión de Perfiles (puede_finalizar para Consultas)
           const user = (req as any).user;
-          if (user && user.rol !== 'secretaria' && user.rol !== 'administrador') {
+          const rol = user?.rol;
+          if (!rol) {
             await client.query('ROLLBACK');
-            return res.status(403).json({ 
-              success: false, 
-              error: 'Solo secretaria y administrador pueden finalizar consultas' 
+            return res.status(403).json({ success: false, error: 'Usuario no autenticado' });
+          }
+          const puedeFinalizar = await menuService.puedeFinalizarConsulta(rol);
+          if (!puedeFinalizar) {
+            await client.query('ROLLBACK');
+            return res.status(403).json({
+              success: false,
+              error: 'No tiene permiso para finalizar consultas'
             });
           }
 

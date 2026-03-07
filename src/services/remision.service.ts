@@ -237,7 +237,7 @@ export class RemisionService {
 
         // Obtener datos del médico remitente
         const medicoRemitenteResult = await client.query(
-          'SELECT nombres, apellidos, email, especialidad_id FROM medicos WHERE id = $1',
+          'SELECT nombres, apellidos, email, especialidad_id, sexo FROM medicos WHERE id = $1',
           [remision.medico_remitente_id]
         );
         if (medicoRemitenteResult.rows.length === 0) {
@@ -272,6 +272,9 @@ export class RemisionService {
       }
 
       // Preparar datos para el email
+      const sexoRemitente = (medicoRemitenteData.sexo || '').toString().toLowerCase();
+      const tituloRemitente = sexoRemitente === 'femenino' ? 'Dra.' : 'Dr.';
+      const medicoRemitenteTituloNombre = `${tituloRemitente} ${medicoRemitenteData.nombres} ${medicoRemitenteData.apellidos}`.trim();
       const emailData = {
         pacienteNombre: pacienteData.nombres,
         pacienteApellidos: pacienteData.apellidos,
@@ -279,6 +282,7 @@ export class RemisionService {
         pacienteSexo: pacienteData.sexo,
         medicoRemitenteNombre: medicoRemitenteData.nombres,
         medicoRemitenteApellidos: medicoRemitenteData.apellidos,
+        medicoRemitenteTituloNombre,
         medicoRemitenteEspecialidad: especialidadData?.nombre_especialidad || 'Especialidad no especificada',
         motivoRemision: remision.motivo_remision,
         observaciones: remision.observaciones || 'No hay observaciones adicionales',

@@ -123,11 +123,11 @@ export const validateLogin = validateInput(Joi.object({
   password: Joi.string().min(6).required()
 }));
 
-// Validación específica para informes médicos
+// Validación específica para informes médicos (titulo y tipo_informe opcionales)
 export const validateInforme = validateInput(Joi.object({
-  titulo: Joi.string().min(5).max(200).required(),
-  tipo_informe: Joi.string().required(),
-  contenido: Joi.string().min(10).required(),
+  titulo: Joi.string().min(0).max(200).allow('', null).optional(),
+  tipo_informe: Joi.string().allow('', null).optional(),
+  contenido: Joi.string().min(10).max(100000).required(),
   paciente_id: Joi.number().required(),
   medico_id: Joi.number().required(),
   template_id: Joi.number().optional(),
@@ -137,18 +137,18 @@ export const validateInforme = validateInput(Joi.object({
   creado_por: Joi.number().required()
 }));
 
-// Validación para actualización de informes (campos opcionales)
+// Validación para actualización de informes (campos opcionales; contenido/observaciones pueden ser vacíos o null)
 export const validateInformeUpdate = validateInput(Joi.object({
-  titulo: Joi.string().min(5).max(200).optional(),
-  tipo_informe: Joi.string().optional(),
-  contenido: Joi.string().min(10).optional(),
+  titulo: Joi.string().min(5).max(200).allow('', null).optional(),
+  tipo_informe: Joi.string().allow('', null).optional(),
+  contenido: Joi.string().min(0).max(100000).allow('', null).optional(),
   paciente_id: Joi.number().optional(),
   medico_id: Joi.number().optional(),
   template_id: Joi.number().optional(),
   estado: Joi.string().valid('borrador', 'finalizado', 'firmado', 'enviado').optional(),
-  fecha_emision: Joi.string().allow('').optional(),
+  fecha_emision: Joi.string().allow('', null).optional(),
   fecha_envio: Joi.string().isoDate().optional(),
-  observaciones: Joi.string().allow('').optional(),
+  observaciones: Joi.string().allow('', null).optional(),
   creado_por: Joi.number().optional()
 }));
 
