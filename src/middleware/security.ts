@@ -135,7 +135,7 @@ export const validateInforme = validateInput(Joi.object({
   fecha_emision: Joi.string().allow('').optional(),
   observaciones: Joi.string().allow('').optional(),
   creado_por: Joi.number().required()
-}));
+}).unknown(true));
 
 // Validación para actualización de informes (campos opcionales; contenido/observaciones pueden ser vacíos o null)
 export const validateInformeUpdate = validateInput(Joi.object({

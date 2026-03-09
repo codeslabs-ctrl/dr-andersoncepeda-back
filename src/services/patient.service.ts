@@ -156,6 +156,15 @@ export class PatientService {
         }
       }
 
+      // Validate telefono uniqueness
+      if (patientData.telefono && String(patientData.telefono).replace(/\D/g, '').length >= 10) {
+        const existingByTelefono = await this.patientRepository.searchByTelefono(patientData.telefono);
+        if (existingByTelefono.length > 0) {
+          console.error('❌ PatientService - Teléfono ya existe:', patientData.telefono);
+          throw new Error('El teléfono ya está registrado en el sistema');
+        }
+      }
+
       // Separar datos del paciente de los datos médicos
       const { motivo_consulta, diagnostico, conclusiones, plan, ...patientBasicData } = patientData;
       
@@ -288,6 +297,15 @@ export class PatientService {
         }
       }
 
+      // Validate telefono uniqueness if provided
+      if (patientData.telefono && String(patientData.telefono).replace(/\D/g, '').length >= 10) {
+        const existingByTelefono = await this.patientRepository.searchByTelefono(patientData.telefono);
+        const others = existingByTelefono.filter(p => String(p.id) !== String(id));
+        if (others.length > 0) {
+          throw new Error('El teléfono ya está registrado en el sistema');
+        }
+      }
+
       return await this.patientRepository.update(id, patientData);
     } catch (error) {
       throw new Error(`Failed to update patient: ${(error as Error).message}`);
@@ -323,6 +341,16 @@ export class PatientService {
       return await this.patientRepository.searchByCedula(cedula.trim());
     } catch (error) {
       throw new Error(`Failed to search patients by cedula: ${(error as Error).message}`);
+    }
+  }
+
+  async searchPatientsByTelefono(telefono: string): Promise<PatientData[]> {
+    try {
+      const digits = (telefono || '').replace(/\D/g, '');
+      if (digits.length < 10) return [];
+      return await this.patientRepository.searchByTelefono(telefono.trim());
+    } catch (error) {
+      throw new Error(`Failed to search patients by telefono: ${(error as Error).message}`);
     }
   }
 

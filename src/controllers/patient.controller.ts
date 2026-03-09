@@ -462,6 +462,35 @@ export class PatientController {
     }
   }
 
+  async searchPatientsByTelefono(req: Request<{}, ApiResponse, {}, { telefono?: string }>, res: Response<ApiResponse>): Promise<void> {
+    try {
+      const { telefono } = req.query;
+
+      if (!telefono || String(telefono).trim().length < 10) {
+        const response: ApiResponse = {
+          success: true,
+          data: []
+        };
+        res.json(response);
+        return;
+      }
+
+      const patients = await this.patientService.searchPatientsByTelefono(telefono as string);
+
+      const response: ApiResponse = {
+        success: true,
+        data: patients
+      };
+      res.json(response);
+    } catch (error) {
+      const response: ApiResponse = {
+        success: false,
+        error: { message: (error as Error).message }
+      };
+      res.status(400).json(response);
+    }
+  }
+
   async searchPatientsByPatologia(req: Request<{}, ApiResponse, {}, { q?: string; medico_id?: string }>, res: Response<ApiResponse>): Promise<void> {
     try {
       const q = (req.query.q || '').trim();

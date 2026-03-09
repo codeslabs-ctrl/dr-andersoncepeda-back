@@ -71,6 +71,17 @@ export class PatientRepository extends PostgresRepository<PatientData> {
     return result.rows;
   }
 
+  /** Busca pacientes por teléfono (solo dígitos; ignora espacios, guiones, puntos). */
+  async searchByTelefono(telefono: string): Promise<PatientData[]> {
+    const digits = (telefono || '').replace(/\D/g, '');
+    if (digits.length < 10) return [];
+    const result = await this.query(
+      `SELECT * FROM ${this.tableName} WHERE REGEXP_REPLACE(COALESCE(telefono,''), '[^0-9]', '', 'g') = $1 ORDER BY id DESC`,
+      [digits]
+    );
+    return result.rows;
+  }
+
   async getPatientsByAgeRange(minAge: number, maxAge: number): Promise<PatientData[]> {
     const result = await this.query(
       `SELECT * FROM ${this.tableName} WHERE edad >= $1 AND edad <= $2 ORDER BY id DESC`,
