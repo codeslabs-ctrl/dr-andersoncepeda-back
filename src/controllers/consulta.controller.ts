@@ -1466,12 +1466,16 @@ export class ConsultaController {
     }
   }
 
-  // Obtener estadísticas de consultas
-  static async getEstadisticasConsultas(_req: Request, res: Response): Promise<void> {
+  // Obtener estadísticas de consultas (si rol medico, solo datos de ese médico)
+  static async getEstadisticasConsultas(req: Request, res: Response): Promise<void> {
     try {
+      const user = (req as any).user;
+      const medicoId = user?.rol === 'medico' && user?.medico_id != null ? user.medico_id : null;
+
       const client = await postgresPool.connect();
       try {
-        const statsResult = await client.query(`
+        const sqlQuery = medicoId != null
+          ? `
           SELECT 
             COUNT(*) as total_consultas,
             COUNT(*) FILTER (WHERE estado_consulta = 'agendada') as agendadas,
@@ -1482,7 +1486,21 @@ export class ConsultaController {
             COUNT(*) FILTER (WHERE fecha_pautada = CURRENT_DATE) as consultas_hoy,
             COUNT(*) FILTER (WHERE fecha_pautada >= CURRENT_DATE AND estado_consulta IN ('agendada', 'reagendada')) as consultas_futuras
           FROM consultas_pacientes
-        `);
+          WHERE medico_id = $1
+          `
+          : `
+          SELECT 
+            COUNT(*) as total_consultas,
+            COUNT(*) FILTER (WHERE estado_consulta = 'agendada') as agendadas,
+            COUNT(*) FILTER (WHERE estado_consulta = 'reagendada') as reagendadas,
+            COUNT(*) FILTER (WHERE estado_consulta = 'finalizada') as finalizadas,
+            COUNT(*) FILTER (WHERE estado_consulta = 'cancelada') as canceladas,
+            COUNT(*) FILTER (WHERE estado_consulta = 'por_agendar') as por_agendar,
+            COUNT(*) FILTER (WHERE fecha_pautada = CURRENT_DATE) as consultas_hoy,
+            COUNT(*) FILTER (WHERE fecha_pautada >= CURRENT_DATE AND estado_consulta IN ('agendada', 'reagendada')) as consultas_futuras
+          FROM consultas_pacientes
+        `;
+        const statsResult = await client.query(sqlQuery, medicoId != null ? [medicoId] : []);
 
         const stats = statsResult.rows[0];
 
@@ -1517,12 +1535,14 @@ export class ConsultaController {
     }
   }
 
-  // Obtener estadísticas de consultas por estado en un período
+  // Obtener estadísticas de consultas por estado en un período (si rol medico, solo ese médico)
   static async getEstadisticasPorPeriodo(req: Request, res: Response): Promise<void> {
     try {
       const { fecha_inicio, fecha_fin } = req.query;
+      const user = (req as any).user;
+      const medicoId = user?.rol === 'medico' && user?.medico_id != null ? user.medico_id : null;
 
-      console.log('🔍 Obteniendo estadísticas por período:', { fecha_inicio, fecha_fin });
+      console.log('🔍 Obteniendo estadísticas por período:', { fecha_inicio, fecha_fin, medicoId });
 
       const client = await postgresPool.connect();
       try {
@@ -1536,6 +1556,12 @@ export class ConsultaController {
 
         const params: any[] = [];
         let paramIndex = 1;
+
+        if (medicoId != null) {
+          sqlQuery += ` AND medico_id = $${paramIndex}`;
+          params.push(medicoId);
+          paramIndex++;
+        }
 
         if (fecha_inicio) {
           sqlQuery += ` AND fecha_pautada >= $${paramIndex}`;
@@ -1581,12 +1607,14 @@ export class ConsultaController {
     }
   }
 
-  // Obtener estadísticas de consultas por especialidad en un período
+  // Obtener estadísticas de consultas por especialidad en un período (si rol medico, solo ese médico)
   static async getEstadisticasPorEspecialidad(req: Request, res: Response): Promise<void> {
     try {
       const { fecha_inicio, fecha_fin } = req.query;
+      const user = (req as any).user;
+      const medicoId = user?.rol === 'medico' && user?.medico_id != null ? user.medico_id : null;
 
-      console.log('🔍 Obteniendo estadísticas por especialidad:', { fecha_inicio, fecha_fin });
+      console.log('🔍 Obteniendo estadísticas por especialidad:', { fecha_inicio, fecha_fin, medicoId });
 
       const client = await postgresPool.connect();
       try {
@@ -1602,6 +1630,12 @@ export class ConsultaController {
 
         const params: any[] = [];
         let paramIndex = 1;
+
+        if (medicoId != null) {
+          sqlQuery += ` AND c.medico_id = $${paramIndex}`;
+          params.push(medicoId);
+          paramIndex++;
+        }
 
         if (fecha_inicio) {
           sqlQuery += ` AND c.fecha_pautada >= $${paramIndex}`;
@@ -1647,12 +1681,14 @@ export class ConsultaController {
     }
   }
 
-  // Obtener estadísticas de consultas por médico en un período
+  // Obtener estadísticas de consultas por médico en un período (si rol medico, solo ese médico)
   static async getEstadisticasPorMedico(req: Request, res: Response): Promise<void> {
     try {
       const { fecha_inicio, fecha_fin } = req.query;
+      const user = (req as any).user;
+      const medicoId = user?.rol === 'medico' && user?.medico_id != null ? user.medico_id : null;
 
-      console.log('🔍 Obteniendo estadísticas por médico:', { fecha_inicio, fecha_fin });
+      console.log('🔍 Obteniendo estadísticas por médico:', { fecha_inicio, fecha_fin, medicoId });
 
       const client = await postgresPool.connect();
       try {
@@ -1667,6 +1703,12 @@ export class ConsultaController {
 
         const params: any[] = [];
         let paramIndex = 1;
+
+        if (medicoId != null) {
+          sqlQuery += ` AND c.medico_id = $${paramIndex}`;
+          params.push(medicoId);
+          paramIndex++;
+        }
 
         if (fecha_inicio) {
           sqlQuery += ` AND c.fecha_pautada >= $${paramIndex}`;
