@@ -4,6 +4,24 @@ import { ApiResponse } from '../types/index.js';
 import { EmailService } from '../services/email.service.js';
 import menuService from '../services/menu.service.js';
 
+const VENEZUELA_TZ = 'America/Caracas';
+
+/** Fecha actual en Venezuela (YYYY-MM-DD) y fechas relativas para estadísticas. */
+function getFechasVenezuela(): { hoy: string; hoyMenos7: string; hoyMenos30: string } {
+  const now = new Date();
+  const hoy = now.toLocaleDateString('en-CA', { timeZone: VENEZUELA_TZ });
+  const parts = hoy.split('-').map(Number);
+  const y = parts[0] ?? 0;
+  const m = (parts[1] ?? 1) - 1;
+  const d = parts[2] ?? 1;
+  const dateHoy = new Date(y, m, d);
+  dateHoy.setDate(dateHoy.getDate() - 7);
+  const hoyMenos7 = `${dateHoy.getFullYear()}-${String(dateHoy.getMonth() + 1).padStart(2, '0')}-${String(dateHoy.getDate()).padStart(2, '0')}`;
+  dateHoy.setDate(dateHoy.getDate() - 23);
+  const hoyMenos30 = `${dateHoy.getFullYear()}-${String(dateHoy.getMonth() + 1).padStart(2, '0')}-${String(dateHoy.getDate()).padStart(2, '0')}`;
+  return { hoy, hoyMenos7, hoyMenos30 };
+}
+
 export class ConsultaController {
   /** Formatea hora tipo "14:00" o "14:00:00" a "2:00 PM". */
   static formatHoraAMPM(horaStr: string | null | undefined): string {
@@ -336,24 +354,25 @@ export class ConsultaController {
     }
   }
 
-  // Obtener consultas del día
-  static async getConsultasHoy(_req: Request, res: Response): Promise<void> {
+  // Obtener consultas del día (filtradas por médico si rol es medico)
+  static async getConsultasHoy(req: Request, res: Response): Promise<void> {
     try {
-      // Obtener fecha actual en zona horaria de Venezuela (GMT-4)
+      const user = (req as any).user;
       const now = new Date();
-      // Crear fecha en zona horaria de Venezuela usando toLocaleDateString
-      const fechaHoyVenezuela = now.toLocaleDateString('en-CA', { 
-        timeZone: 'America/Caracas' 
+      const fechaHoyVenezuela = now.toLocaleDateString('en-CA', {
+        timeZone: 'America/Caracas'
       }); // Formato YYYY-MM-DD
-      
-      console.log('🔍 getConsultasHoy - Fecha filtro (Venezuela):', fechaHoyVenezuela);
 
       const client = await postgresPool.connect();
       try {
-        const result = await client.query(
-          'SELECT * FROM vista_consultas_completa WHERE fecha_pautada = $1 ORDER BY hora_pautada ASC',
-          [fechaHoyVenezuela]
-        );
+        let sql = 'SELECT * FROM vista_consultas_completa WHERE fecha_pautada = $1';
+        const params: any[] = [fechaHoyVenezuela];
+        if (user?.rol === 'medico' && user?.medico_id != null) {
+          sql += ' AND medico_id = $2';
+          params.push(user.medico_id);
+        }
+        sql += ' ORDER BY hora_pautada ASC';
+        const result = await client.query(sql, params);
 
         res.json({
           success: true,
@@ -911,17 +930,21 @@ export class ConsultaController {
           return;
         }
 
-        // Actualizar el estado de la consulta a 'cancelada'
+        // Si el motivo es "paciente no asistió", guardar estado no_asistio para estadísticas; si no, cancelada
+        const estadoFinal = (motivo_cancelacion || '').trim().toLowerCase() === 'paciente_no_asistio'
+          ? 'no_asistio'
+          : 'cancelada';
+
         const updateResult = await client.query(
           `UPDATE consultas_pacientes 
-           SET estado_consulta = 'cancelada',
-               motivo_cancelacion = $1,
+           SET estado_consulta = $1,
+               motivo_cancelacion = $2,
                fecha_cancelacion = CURRENT_TIMESTAMP,
-               cancelado_por = $2,
+               cancelado_por = $3,
                fecha_actualizacion = CURRENT_TIMESTAMP
-           WHERE id = $3
+           WHERE id = $4
            RETURNING *`,
-          [motivo_cancelacion, user?.userId || null, consultaId]
+          [estadoFinal, motivo_cancelacion, user?.userId || null, consultaId]
         );
 
         const consulta = updateResult.rows[0];
@@ -986,7 +1009,7 @@ export class ConsultaController {
           success: true,
           data: {
             id: consultaId,
-            estado_consulta: 'cancelada',
+            estado_consulta: consulta.estado_consulta,
             motivo_cancelacion: motivo_cancelacion,
             fecha_cancelacion: consulta.fecha_cancelacion,
             cancelado_por: user?.userId || null
@@ -1471,6 +1494,7 @@ export class ConsultaController {
     try {
       const user = (req as any).user;
       const medicoId = user?.rol === 'medico' && user?.medico_id != null ? user.medico_id : null;
+      const fechas = getFechasVenezuela();
 
       const client = await postgresPool.connect();
       try {
@@ -1483,8 +1507,10 @@ export class ConsultaController {
             COUNT(*) FILTER (WHERE estado_consulta = 'finalizada') as finalizadas,
             COUNT(*) FILTER (WHERE estado_consulta = 'cancelada') as canceladas,
             COUNT(*) FILTER (WHERE estado_consulta = 'por_agendar') as por_agendar,
-            COUNT(*) FILTER (WHERE fecha_pautada = CURRENT_DATE) as consultas_hoy,
-            COUNT(*) FILTER (WHERE fecha_pautada >= CURRENT_DATE AND estado_consulta IN ('agendada', 'reagendada')) as consultas_futuras
+            COUNT(*) FILTER (WHERE estado_consulta = 'no_asistio') as no_asistieron,
+            COUNT(*) FILTER (WHERE (fecha_pautada::date) = $2::date) as consultas_hoy,
+            COUNT(*) FILTER (WHERE (fecha_pautada::date) >= $3::date AND (fecha_pautada::date) <= $2::date) as consultas_esta_semana,
+            COUNT(*) FILTER (WHERE fecha_pautada >= $2::date AND estado_consulta IN ('agendada', 'reagendada')) as consultas_futuras
           FROM consultas_pacientes
           WHERE medico_id = $1
           `
@@ -1496,26 +1522,39 @@ export class ConsultaController {
             COUNT(*) FILTER (WHERE estado_consulta = 'finalizada') as finalizadas,
             COUNT(*) FILTER (WHERE estado_consulta = 'cancelada') as canceladas,
             COUNT(*) FILTER (WHERE estado_consulta = 'por_agendar') as por_agendar,
-            COUNT(*) FILTER (WHERE fecha_pautada = CURRENT_DATE) as consultas_hoy,
+            COUNT(*) FILTER (WHERE (fecha_pautada::date) = CURRENT_DATE) as consultas_hoy,
             COUNT(*) FILTER (WHERE fecha_pautada >= CURRENT_DATE AND estado_consulta IN ('agendada', 'reagendada')) as consultas_futuras
           FROM consultas_pacientes
         `;
-        const statsResult = await client.query(sqlQuery, medicoId != null ? [medicoId] : []);
-
+        const params = medicoId != null ? [medicoId, fechas.hoy, fechas.hoyMenos7] : [];
+        const statsResult = await client.query(sqlQuery, params);
         const stats = statsResult.rows[0];
+
+        const data: Record<string, number> = {
+          total_consultas: parseInt(stats.total_consultas),
+          agendadas: parseInt(stats.agendadas),
+          reagendadas: parseInt(stats.reagendadas),
+          finalizadas: parseInt(stats.finalizadas),
+          canceladas: parseInt(stats.canceladas),
+          por_agendar: parseInt(stats.por_agendar),
+          consultas_hoy: parseInt(stats.consultas_hoy),
+          consultas_futuras: parseInt(stats.consultas_futuras)
+        };
+
+        if (medicoId != null) {
+          data['consultas_esta_semana'] = parseInt(stats.consultas_esta_semana ?? 0);
+          data['no_asistieron'] = parseInt(stats.no_asistieron ?? 0);
+          const pacResult = await client.query(
+            `SELECT COUNT(DISTINCT paciente_id) as pacientes_atendidos FROM consultas_pacientes 
+             WHERE medico_id = $1 AND estado_consulta = 'finalizada' AND (fecha_pautada::date) >= $2::date`,
+            [medicoId, fechas.hoyMenos30]
+          );
+          data['pacientes_atendidos_30d'] = parseInt(pacResult.rows[0]?.pacientes_atendidos ?? 0);
+        }
 
         res.json({
           success: true,
-          data: {
-            total_consultas: parseInt(stats.total_consultas),
-            agendadas: parseInt(stats.agendadas),
-            reagendadas: parseInt(stats.reagendadas),
-            finalizadas: parseInt(stats.finalizadas),
-            canceladas: parseInt(stats.canceladas),
-            por_agendar: parseInt(stats.por_agendar),
-            consultas_hoy: parseInt(stats.consultas_hoy),
-            consultas_futuras: parseInt(stats.consultas_futuras)
-          }
+          data
         } as ApiResponse<any>);
       } catch (dbError) {
         console.error('❌ PostgreSQL error fetching consultas statistics:', dbError);
