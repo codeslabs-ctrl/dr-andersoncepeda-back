@@ -11,9 +11,9 @@ function getFechasVenezuela(): { hoy: string; hoyMenos7: string; hoyMenos30: str
   const now = new Date();
   const hoy = now.toLocaleDateString('en-CA', { timeZone: VENEZUELA_TZ });
   const parts = hoy.split('-').map(Number);
-  const y = parts[0] ?? 0;
-  const m = (parts[1] ?? 1) - 1;
-  const d = parts[2] ?? 1;
+  const y: number = Number(parts[0]) || 0;
+  const m: number = Math.max(0, (Number(parts[1]) || 1) - 1);
+  const d: number = Number(parts[2]) || 1;
   const dateHoy = new Date(y, m, d);
   dateHoy.setDate(dateHoy.getDate() - 7);
   const hoyMenos7 = `${dateHoy.getFullYear()}-${String(dateHoy.getMonth() + 1).padStart(2, '0')}-${String(dateHoy.getDate()).padStart(2, '0')}`;
