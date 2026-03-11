@@ -3,6 +3,7 @@ import { postgresPool } from '../config/database.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import { FirmaService } from './firma.service.js';
+import clinicaAtencionService from './clinica-atencion.service.js';
 
 export class PDFService {
   private firmaService: FirmaService;
@@ -270,11 +271,21 @@ export class PDFService {
       day: 'numeric'
     });
 
-      // Obtener configuración de la clínica
+      // Obtener configuración de la clínica: si el informe tiene clinica_atencion_id, usar esa sede
       const clinicaAlias = process.env['CLINICA_ALIAS'] || 'default';
-      const clinicaConfig = await this.obtenerConfiguracionClinica(clinicaAlias);
-      
-      // Convertir logo a base64
+      let clinicaConfig = await this.obtenerConfiguracionClinica(clinicaAlias);
+      const capId = informe.clinica_atencion_id;
+      if (capId) {
+        const clinicaAtencion = await clinicaAtencionService.getById(capId);
+        if (clinicaAtencion) {
+          clinicaConfig = {
+            ...clinicaConfig,
+            nombre: clinicaAtencion.nombre_clinica,
+            direccion: clinicaAtencion.direccion_clinica || clinicaConfig.direccion || '',
+            logoPath: clinicaAtencion.logo_path || clinicaConfig.logoPath
+          };
+        }
+      }
       const logoBase64 = await this.obtenerLogoBase64(clinicaConfig.logoPath);
       clinicaConfig.logo = logoBase64;
       

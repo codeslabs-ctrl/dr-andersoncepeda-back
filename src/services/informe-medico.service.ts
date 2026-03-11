@@ -15,6 +15,7 @@ export interface InformeMedico {
   fecha_actualizacion: Date;
   fecha_envio?: Date | string;
   clinica_alias: string;
+  clinica_atencion_id?: number | null;
   observaciones?: string;
   numero_secuencial?: number;
   creado_por: number;
@@ -101,8 +102,8 @@ export class InformeMedicoService {
           const insertResult = await client.query(
             `INSERT INTO informes_medicos (
               numero_informe, titulo, tipo_informe, contenido, paciente_id, medico_id, 
-              template_id, estado, fecha_emision, clinica_alias, observaciones, creado_por
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+              template_id, estado, fecha_emision, clinica_alias, clinica_atencion_id, observaciones, creado_por
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
             RETURNING *`,
             [
               numeroInforme,
@@ -115,6 +116,7 @@ export class InformeMedicoService {
               informe.estado,
               informe.fecha_emision,
               informe.clinica_alias,
+              informe.clinica_atencion_id ?? null,
               informe.observaciones || null,
               informe.creado_por || informe.medico_id
             ]

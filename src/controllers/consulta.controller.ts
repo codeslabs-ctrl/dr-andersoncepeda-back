@@ -3,6 +3,7 @@ import { postgresPool } from '../config/database.js';
 import { ApiResponse } from '../types/index.js';
 import { EmailService } from '../services/email.service.js';
 import menuService from '../services/menu.service.js';
+import clinicaAtencionService from '../services/clinica-atencion.service.js';
 
 const VENEZUELA_TZ = 'America/Caracas';
 
@@ -739,6 +740,15 @@ export class ConsultaController {
             const observaciones = (consulta.observaciones || consultaData.observaciones || '').trim();
             const fechaPautada = consulta.fecha_pautada ?? consultaData.fecha_pautada;
             const duracionEstimada = consulta.duracion_estimada ?? consultaData.duracion_estimada ?? 30;
+            let direccionClinica = '';
+            const capId = consulta.clinica_atencion_id;
+            if (capId) {
+              const clinicaAtencion = await clinicaAtencionService.getById(capId);
+              if (clinicaAtencion?.direccion_clinica) direccionClinica = clinicaAtencion.direccion_clinica;
+            }
+            const bloqueDireccion = direccionClinica
+              ? `<p><strong>Dirección de atención:</strong> ${direccionClinica}</p>`
+              : '';
             const consultaInfo = {
               pacienteNombre: `${pacienteData.nombres} ${pacienteData.apellidos}`,
               medicoNombre: `${medicoData.nombres} ${medicoData.apellidos}`,
@@ -748,7 +758,9 @@ export class ConsultaController {
               motivo: consultaData.motivo_consulta,
               tipo: consultaData.tipo_consulta,
               duracion: duracionEstimada,
-              observaciones: observaciones || '—'
+              observaciones: observaciones || '—',
+              direccionClinica,
+              bloqueDireccion
             };
 
             // Enviar emails en paralelo

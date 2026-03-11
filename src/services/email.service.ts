@@ -215,6 +215,7 @@ export class EmailService {
       tipo: string;
       duracion: number;
       observaciones?: string;
+      direccionClinica?: string;
     }
   ): Promise<{ paciente: boolean; medico: boolean }> {
     const results = { paciente: false, medico: false };
@@ -519,6 +520,7 @@ export class EmailService {
                 <p><strong>Tipo:</strong> {{tipo}}</p>
                 <p><strong>Duración estimada:</strong> {{duracion}} minutos</p>
                 <p><strong>Observaciones:</strong> {{observaciones}}</p>
+                {{bloqueDireccion}}
               </div>
               
               <p><strong>Importante:</strong></p>
