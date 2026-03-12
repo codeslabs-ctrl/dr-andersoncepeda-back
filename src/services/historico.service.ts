@@ -20,6 +20,10 @@ export interface HistoricoData {
   ruta_archivo?: string;
   nombre_archivo?: string;
   consulta_id?: number;
+  titulo?: string;
+  tratamiento_cumplido?: string | null;
+  evaluacion_subjetiva?: string | null;
+  evaluacion_complementaria?: string | null;
 }
 
 export interface HistoricoWithDetails extends HistoricoData {
@@ -42,6 +46,8 @@ export class HistoricoService {
           h.id,
           h.paciente_id,
           h.medico_id,
+          h.consulta_id,
+          h.titulo,
           h.motivo_consulta,
           h.examenes_medico,
           h.diagnostico,
@@ -50,6 +56,9 @@ export class HistoricoService {
           h.antecedentes_personales,
           h.antecedentes_familiares,
           h.examenes_paraclinicos,
+          h.tratamiento_cumplido,
+          h.evaluacion_subjetiva,
+          h.evaluacion_complementaria,
           h.fecha_consulta,
           h.fecha_creacion,
           h.fecha_actualizacion,
@@ -77,6 +86,8 @@ export class HistoricoService {
         id: row.id,
         paciente_id: row.paciente_id,
         medico_id: row.medico_id,
+        consulta_id: row.consulta_id ?? undefined,
+        titulo: row.titulo ?? undefined,
         motivo_consulta: row.motivo_consulta,
         examenes_medico: row.examenes_medico,
         diagnostico: row.diagnostico,
@@ -85,6 +96,9 @@ export class HistoricoService {
         antecedentes_personales: row.antecedentes_personales,
         antecedentes_familiares: row.antecedentes_familiares,
         examenes_paraclinicos: row.examenes_paraclinicos,
+        tratamiento_cumplido: row.tratamiento_cumplido ?? null,
+        evaluacion_subjetiva: row.evaluacion_subjetiva ?? null,
+        evaluacion_complementaria: row.evaluacion_complementaria ?? null,
         fecha_consulta: row.fecha_consulta,
         fecha_creacion: row.fecha_creacion,
         fecha_actualizacion: row.fecha_actualizacion,
@@ -116,6 +130,8 @@ export class HistoricoService {
             h.id,
             h.paciente_id,
             h.medico_id,
+            h.consulta_id,
+            h.titulo,
             h.motivo_consulta,
             h.diagnostico,
             h.conclusiones,
@@ -123,6 +139,9 @@ export class HistoricoService {
             h.antecedentes_personales,
             h.antecedentes_familiares,
             h.examenes_paraclinicos,
+            h.tratamiento_cumplido,
+            h.evaluacion_subjetiva,
+            h.evaluacion_complementaria,
             h.fecha_consulta,
             h.fecha_creacion,
             h.fecha_actualizacion,
@@ -138,8 +157,8 @@ export class HistoricoService {
           LEFT JOIN pacientes p ON h.paciente_id = p.id
           LEFT JOIN medicos m ON h.medico_id = m.id
           LEFT JOIN especialidades e ON m.especialidad_id = e.id
-          WHERE h.paciente_id = $1
-          ORDER BY h.id DESC
+          WHERE h.paciente_id = $1 AND h.consulta_id IS NOT NULL
+          ORDER BY h.fecha_consulta DESC, h.id DESC
         `;
 
         const result = await client.query(query, [pacienteId]);
@@ -148,6 +167,8 @@ export class HistoricoService {
           id: row.id,
           paciente_id: row.paciente_id,
           medico_id: row.medico_id,
+          consulta_id: row.consulta_id ?? undefined,
+          titulo: row.titulo ?? null,
           motivo_consulta: row.motivo_consulta,
           diagnostico: row.diagnostico,
           conclusiones: row.conclusiones,
@@ -155,6 +176,9 @@ export class HistoricoService {
           antecedentes_personales: row.antecedentes_personales,
           antecedentes_familiares: row.antecedentes_familiares,
           examenes_paraclinicos: row.examenes_paraclinicos,
+          tratamiento_cumplido: row.tratamiento_cumplido ?? null,
+          evaluacion_subjetiva: row.evaluacion_subjetiva ?? null,
+          evaluacion_complementaria: row.evaluacion_complementaria ?? null,
           fecha_consulta: row.fecha_consulta,
           fecha_creacion: row.fecha_creacion,
           fecha_actualizacion: row.fecha_actualizacion,
@@ -533,10 +557,10 @@ export class HistoricoService {
       try {
           const query = `
             SELECT 
-              h.id, h.paciente_id, h.medico_id, h.motivo_consulta, h.examenes_medico, h.diagnostico, 
+              h.id, h.paciente_id, h.medico_id, h.consulta_id, h.titulo, h.motivo_consulta, h.examenes_medico, h.diagnostico, 
               h.conclusiones, h.plan, h.antecedentes_personales, h.antecedentes_familiares,
-              h.examenes_paraclinicos, h.fecha_consulta, h.fecha_creacion, 
-              h.fecha_actualizacion, h.ruta_archivo, h.nombre_archivo,
+              h.examenes_paraclinicos, h.tratamiento_cumplido, h.evaluacion_subjetiva, h.evaluacion_complementaria,
+              h.fecha_consulta, h.fecha_creacion, h.fecha_actualizacion, h.ruta_archivo, h.nombre_archivo,
               p.nombres as paciente_nombre, p.apellidos as paciente_apellidos,
               m.nombres as medico_nombre, m.apellidos as medico_apellidos,
               m.sexo as medico_sexo,
@@ -565,6 +589,8 @@ export class HistoricoService {
             id: historia.id,
             paciente_id: historia.paciente_id,
             medico_id: historia.medico_id,
+            consulta_id: historia.consulta_id ?? undefined,
+            titulo: historia.titulo ?? undefined,
             motivo_consulta: historia.motivo_consulta,
             examenes_medico: historia.examenes_medico,
             diagnostico: historia.diagnostico,
@@ -573,6 +599,9 @@ export class HistoricoService {
             antecedentes_personales: historia.antecedentes_personales,
             antecedentes_familiares: historia.antecedentes_familiares,
             examenes_paraclinicos: historia.examenes_paraclinicos,
+            tratamiento_cumplido: historia.tratamiento_cumplido ?? null,
+            evaluacion_subjetiva: historia.evaluacion_subjetiva ?? null,
+            evaluacion_complementaria: historia.evaluacion_complementaria ?? null,
             fecha_consulta: historia.fecha_consulta,
             fecha_creacion: historia.fecha_creacion,
             fecha_actualizacion: historia.fecha_actualizacion,
@@ -605,7 +634,7 @@ export class HistoricoService {
       console.log('🔍 updateHistorico - updateData:', updateData);
 
       // Filtrar solo los campos que existen en la tabla historico_medico
-      const allowedFields = ['motivo_consulta', 'examenes_medico', 'diagnostico', 'conclusiones', 'plan', 'antecedentes_personales', 'antecedentes_familiares', 'examenes_paraclinicos'];
+      const allowedFields = ['motivo_consulta', 'examenes_medico', 'diagnostico', 'conclusiones', 'plan', 'antecedentes_personales', 'antecedentes_familiares', 'examenes_paraclinicos', 'tratamiento_cumplido', 'evaluacion_subjetiva', 'evaluacion_complementaria'];
       const filteredData: any = {};
       
       for (const [key, value] of Object.entries(updateData)) {
@@ -643,7 +672,7 @@ export class HistoricoService {
           if (updateFields.length === 0) {
             console.error('❌ updateHistorico - No hay campos para actualizar');
             console.error('❌ updateHistorico - filteredData:', filteredData);
-            throw new Error('No hay campos para actualizar. Debe proporcionar al menos uno de los siguientes campos: motivo_consulta, diagnostico, conclusiones, plan, antecedentes_personales, antecedentes_familiares, examenes_paraclinicos');
+            throw new Error('No hay campos para actualizar. Debe proporcionar al menos uno de los siguientes campos: motivo_consulta, diagnostico, conclusiones, plan, antecedentes_personales, antecedentes_familiares, examenes_paraclinicos, tratamiento_cumplido, evaluacion_subjetiva, evaluacion_complementaria');
           }
           
           console.log('🔍 updateHistorico - updateFields:', updateFields);
@@ -687,10 +716,10 @@ export class HistoricoService {
           // Obtener los datos completos con joins
           const fullDataQuery = `
             SELECT 
-              h.id, h.paciente_id, h.medico_id, h.motivo_consulta, h.examenes_medico, h.diagnostico, 
+              h.id, h.paciente_id, h.medico_id, h.consulta_id, h.titulo, h.motivo_consulta, h.examenes_medico, h.diagnostico, 
               h.conclusiones, h.plan, h.antecedentes_personales, h.antecedentes_familiares,
-              h.examenes_paraclinicos, h.fecha_consulta, h.fecha_creacion, 
-              h.fecha_actualizacion, h.ruta_archivo, h.nombre_archivo,
+              h.examenes_paraclinicos, h.tratamiento_cumplido, h.evaluacion_subjetiva, h.evaluacion_complementaria,
+              h.fecha_consulta, h.fecha_creacion, h.fecha_actualizacion, h.ruta_archivo, h.nombre_archivo,
               p.nombres as paciente_nombre, p.apellidos as paciente_apellidos,
               m.nombres as medico_nombre, m.apellidos as medico_apellidos,
               e.nombre_especialidad as especialidad_nombre
@@ -948,18 +977,22 @@ export class HistoricoService {
       try {
           const insertQuery = `
             INSERT INTO historico_pacientes (
-              paciente_id, medico_id, motivo_consulta, examenes_medico, diagnostico, 
+              paciente_id, medico_id, consulta_id, titulo, motivo_consulta, examenes_medico, diagnostico, 
               conclusiones, plan, antecedentes_personales, antecedentes_familiares,
-              examenes_paraclinicos, fecha_consulta
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+              examenes_paraclinicos, tratamiento_cumplido, evaluacion_subjetiva, evaluacion_complementaria, fecha_consulta
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
             RETURNING *
           `;
           
           const fechaConsulta = (historicoData.fecha_consulta || new Date().toISOString().split('T')[0]) as string;
+          const consultaIdForInsert = historicoData.consulta_id ?? null;
+          const titulo = historicoData.titulo ?? 'control';
           
           const result = await client.query(insertQuery, [
             historicoData.paciente_id,
             medicoId,
+            consultaIdForInsert,
+            titulo,
             historicoData.motivo_consulta,
             (historicoData as HistoricoData).examenes_medico || null,
             historicoData.diagnostico || null,
@@ -968,6 +1001,9 @@ export class HistoricoService {
             historicoData.antecedentes_personales || null,
             historicoData.antecedentes_familiares || null,
             (historicoData as any).examenes_paraclinicos || null,
+            (historicoData as any).tratamiento_cumplido ?? null,
+            (historicoData as any).evaluacion_subjetiva ?? null,
+            (historicoData as any).evaluacion_complementaria ?? null,
             fechaConsulta
           ]);
 
@@ -977,9 +1013,9 @@ export class HistoricoService {
           // Obtener los datos completos con joins
           const fullDataQuery = `
             SELECT 
-              h.id, h.paciente_id, h.medico_id, h.motivo_consulta, h.examenes_medico, h.diagnostico, 
-              h.conclusiones, h.plan, h.fecha_consulta, h.fecha_creacion, 
-              h.fecha_actualizacion, h.ruta_archivo, h.nombre_archivo,
+              h.id, h.paciente_id, h.medico_id, h.consulta_id, h.titulo, h.motivo_consulta, h.examenes_medico, h.diagnostico, 
+              h.conclusiones, h.plan, h.tratamiento_cumplido, h.evaluacion_subjetiva, h.evaluacion_complementaria,
+              h.fecha_consulta, h.fecha_creacion, h.fecha_actualizacion, h.ruta_archivo, h.nombre_archivo,
               p.nombres as paciente_nombre, p.apellidos as paciente_apellidos,
               m.nombres as medico_nombre, m.apellidos as medico_apellidos
             FROM historico_pacientes h

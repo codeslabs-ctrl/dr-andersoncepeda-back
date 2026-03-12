@@ -81,6 +81,28 @@ export class FirmaService {
       throw new Error(`Error guardando firma: ${(error as Error).message}`);
     }
   }
+
+  /**
+   * Guarda el sello húmedo de un médico en la misma carpeta que la firma (assets/firmas)
+   */
+  async guardarSello(medicoId: number, archivo: Express.Multer.File): Promise<string> {
+    try {
+      const filename = `medico_${medicoId}_sello${path.extname(archivo.originalname)}`;
+      const rutaCompleta = path.join(process.cwd(), 'assets', 'firmas', filename);
+      const dir = path.dirname(rutaCompleta);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      if (archivo.path !== rutaCompleta && fs.existsSync(archivo.path)) {
+        if (fs.existsSync(rutaCompleta)) fs.unlinkSync(rutaCompleta);
+        fs.renameSync(archivo.path, rutaCompleta);
+      }
+      const archivoFinal = fs.existsSync(rutaCompleta) ? rutaCompleta : archivo.path;
+      if (!fs.existsSync(archivoFinal)) throw new Error('No se pudo guardar el archivo del sello');
+      return path.relative(process.cwd(), archivoFinal).replace(/\\/g, '/');
+    } catch (error) {
+      console.error('❌ Error guardando sello:', error);
+      throw new Error(`Error guardando sello: ${(error as Error).message}`);
+    }
+  }
   
   /**
    * Obtiene la ruta de la firma digital de un médico
@@ -170,6 +192,50 @@ export class FirmaService {
       return `data:${mimeType};base64,${base64}`;
     } catch (error) {
       console.error('❌ Error obteniendo firma base64:', error);
+      return '';
+    }
+  }
+
+  /**
+   * Obtiene la ruta del sello húmedo del médico (columna sello_humedo en medicos).
+   */
+  async obtenerSello(medicoId: number): Promise<string | null> {
+    try {
+      const client = await postgresPool.connect();
+      try {
+        const result = await client.query(
+          'SELECT sello_humedo FROM medicos WHERE id = $1 LIMIT 1',
+          [medicoId]
+        );
+        if (result.rows.length === 0) return null;
+        return result.rows[0].sello_humedo ?? null;
+      } finally {
+        client.release();
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Convierte el sello húmedo a base64 para el PDF. Si la columna sello_humedo no existe, retorna ''.
+   */
+  async obtenerSelloBase64(medicoId: number): Promise<string> {
+    try {
+      const selloPath = await this.obtenerSello(medicoId);
+      if (!selloPath || typeof selloPath !== 'string') return '';
+      const normalizedPath = selloPath.startsWith('/') ? selloPath.substring(1) : selloPath;
+      const fullPath = path.join(process.cwd(), normalizedPath);
+      if (!fs.existsSync(fullPath)) return '';
+      const buf = fs.readFileSync(fullPath);
+      const base64 = buf.toString('base64');
+      const ext = path.extname(selloPath).toLowerCase();
+      let mimeType = 'image/png';
+      if (ext === '.jpg' || ext === '.jpeg') mimeType = 'image/jpeg';
+      else if (ext === '.gif') mimeType = 'image/gif';
+      else if (ext === '.webp') mimeType = 'image/webp';
+      return `data:${mimeType};base64,${base64}`;
+    } catch {
       return '';
     }
   }

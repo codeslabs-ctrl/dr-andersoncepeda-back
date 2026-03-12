@@ -24,17 +24,26 @@ export function toFechaEmisionVenezuela(value: string | Date | null | undefined)
     const s = now.toLocaleDateString('en-CA', { timeZone: TZ_VENEZUELA });
     const parsed = parseYMD(s);
     if (!parsed) return new Date();
-    return new Date(Date.UTC(parsed.y, parsed.m - 1, parsed.d, NOON_CARACAS_UTC_HOUR, 0, 0, 0));
+    const y: number = parsed.y;
+    const m: number = parsed.m;
+    const day: number = parsed.d;
+    return new Date(Date.UTC(y, m - 1, day, NOON_CARACAS_UTC_HOUR, 0, 0, 0));
   }
   if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value)) {
     const datePart = value.split('T')[0] ?? value;
     const parsed = parseYMD(datePart);
     if (!parsed) return new Date(value);
-    return new Date(Date.UTC(parsed.y, parsed.m - 1, parsed.d, NOON_CARACAS_UTC_HOUR, 0, 0, 0));
+    const y: number = parsed.y;
+    const m: number = parsed.m;
+    const day: number = parsed.d;
+    return new Date(Date.UTC(y, m - 1, day, NOON_CARACAS_UTC_HOUR, 0, 0, 0));
   }
   const d = new Date(value);
   const s = d.toLocaleDateString('en-CA', { timeZone: TZ_VENEZUELA });
   const parsed = parseYMD(s);
   if (!parsed) return d;
-  return new Date(Date.UTC(parsed.y, parsed.m - 1, parsed.d, NOON_CARACAS_UTC_HOUR, 0, 0, 0));
+  const y: number = parsed.y;
+  const m: number = parsed.m;
+  const day: number = parsed.d;
+  return new Date(Date.UTC(y, m - 1, day, NOON_CARACAS_UTC_HOUR, 0, 0, 0));
 }

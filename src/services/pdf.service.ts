@@ -110,16 +110,21 @@ export class PDFService {
         titulo: informe.titulo
       });
 
-      // Obtener firma digital del médico
       let firmaBase64 = '';
+      let selloBase64 = '';
       try {
         firmaBase64 = await this.firmaService.obtenerFirmaBase64(informe.medico_id);
         console.log('✅ Firma obtenida:', firmaBase64 ? 'Presente' : 'No disponible');
       } catch (firmaError: any) {
         console.warn('⚠️ Error obteniendo firma (continuando sin firma):', firmaError.message);
-        firmaBase64 = '';
       }
-      
+      try {
+        selloBase64 = await this.firmaService.obtenerSelloBase64(informe.medico_id);
+        if (selloBase64) console.log('✅ Sello húmedo obtenido');
+      } catch {
+        // Columna sello_humedo puede no existir
+      }
+
       // Generar HTML para el PDF
       let htmlContent = '';
       try {
@@ -132,7 +137,7 @@ export class PDFService {
           pacienteCedula: informe.paciente?.cedula,
           pacienteEdad: informe.paciente?.edad
         });
-        htmlContent = await this.generarHTMLParaPDF(informe, firmaBase64);
+        htmlContent = await this.generarHTMLParaPDF(informe, firmaBase64, selloBase64);
         console.log('✅ HTML generado, tamaño:', htmlContent.length, 'caracteres');
       } catch (htmlError: any) {
         console.error('❌ Error generando HTML:', htmlError);
@@ -262,16 +267,63 @@ export class PDFService {
 
 
   /**
+   * Quita solo las líneas que no deben mostrarse: "No especificada", "Firma Digital del Sistema", "Documento generado electrónicamente", "Fecha: ...".
+   * Mantiene el nombre del médico y los datos que sí existen.
+   */
+  private limpiarLineasFirma(html: string): string {
+    if (!html || !html.trim()) return html;
+    let out = html;
+    // Quitar párrafos que contienen ": No especificada"
+    out = out.replace(/<p[^>]*>[^<]*:\s*No especificada\s*<\/p>/gi, '');
+    out = out.replace(/<p[^>]*>\s*Firma Digital del Sistema\s*<\/p>/gi, '');
+    out = out.replace(/<p[^>]*>\s*Documento generado electrónicamente\s*<\/p>/gi, '');
+    out = out.replace(/<p[^>]*>\s*Fecha:\s*[^<]*<\/p>/gi, '');
+    return out.trim();
+  }
+
+  /**
+   * Parsea el contenido del informe en bloque intro (antecedentes) y bloques por control (fecha + contenido).
+   * Elimina el título "Historial de consultas" del intro.
+   * Detecta controles por párrafos con fecha en español: "DD de Mes de YYYY".
+   */
+  private parseContenidoParaPaginas(contenido: string): { introHtml: string; controls: { date: string; html: string }[] } {
+    if (!contenido || !contenido.trim()) {
+      return { introHtml: '', controls: [] };
+    }
+    contenido = this.limpiarLineasFirma(contenido);
+    const regex = /<p><strong>(\d{1,2}\s+de\s+[a-záéíóúñ]+\s+de\s+\d{4})<\/strong><\/p>/gi;
+    const matches = [...contenido.matchAll(regex)];
+    if (matches.length === 0) {
+      let intro = contenido
+        .replace(/<h3><strong>Historial de consultas:\s*<\/strong><\/h3>/gi, '')
+        .trim();
+      return { introHtml: intro, controls: [] };
+    }
+    const firstMatch = matches[0];
+    if (firstMatch === undefined) return { introHtml: contenido.trim(), controls: [] };
+    const firstIndex = firstMatch.index ?? 0;
+    let introHtml = contenido.substring(0, firstIndex).replace(/\s*<hr>\s*$/i, '').trim();
+    introHtml = introHtml.replace(/<h3><strong>Historial de consultas:\s*<\/strong><\/h3>/gi, '').trim();
+    const controls: { date: string; html: string }[] = [];
+    for (let i = 0; i < matches.length; i++) {
+      const m = matches[i];
+      if (m === undefined) continue;
+      const date = m[1];
+      if (date === undefined) continue;
+      const start = (m.index ?? 0) + m[0].length;
+      const nextMatch = matches[i + 1];
+      const end = nextMatch !== undefined ? (nextMatch.index ?? contenido.length) : contenido.length;
+      let html = contenido.substring(start, end).replace(/^\s*<hr>\s*/i, '').trim();
+      controls.push({ date, html });
+    }
+    return { introHtml, controls };
+  }
+
+  /**
    * Genera el HTML para el PDF
    */
-  private async generarHTMLParaPDF(informe: any, firmaBase64: string = ''): Promise<string> {
-    const fechaEmision = new Date(informe.fecha_emision).toLocaleDateString('es-ES', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-
-      // Obtener configuración de la clínica: si el informe tiene clinica_atencion_id, usar esa sede
+  private async generarHTMLParaPDF(informe: any, firmaBase64: string = '', selloBase64: string = ''): Promise<string> {
+      // Obtener configuración de la clínica
       const clinicaAlias = process.env['CLINICA_ALIAS'] || 'default';
       let clinicaConfig = await this.obtenerConfiguracionClinica(clinicaAlias);
       const capId = informe.clinica_atencion_id;
@@ -296,6 +348,120 @@ export class PDFService {
         nombre: clinicaConfig.nombre,
         logoSize: logoBase64 ? `${Math.round(logoBase64.length / 1024)}KB` : 'N/A'
       });
+
+    const parsed = this.parseContenidoParaPaginas(informe.contenido || '');
+    const tieneControles = parsed.controls.length > 0;
+
+    const renderHeader = (controlDate?: string) => {
+      return `
+          <div class="header">
+            <div class="logo-section">
+                     ${clinicaConfig.logo ? 
+                       `<img src="${clinicaConfig.logo}" alt="${clinicaConfig.nombre} Logo" class="logo">` :
+                       `<div class="logo-fallback" style="width: 140px; height: 140px; background: ${clinicaConfig.color}; border-radius: 6px; margin: 0 0 3px 0; display: flex; align-items: center; justify-content: center; color: white; font-size: 42px; font-weight: bold; box-shadow: 0 1px 4px rgba(0,0,0,0.1);">${clinicaConfig.nombre.charAt(0)}</div>`
+                     }
+              <div class="clinic-info">
+                ${clinicaConfig.descripcion} - ${clinicaConfig.especialidad}
+              </div>
+            </div>
+            <div class="header-content${controlDate ? ' header-content-with-date' : ''}">
+              <div class="document-title">Informe Médico</div>
+              <div class="document-number">N° ${informe.numero_informe}</div>
+              ${controlDate ? `<div class="header-control-date">${controlDate}</div>` : ''}
+            </div>
+          </div>`;
+    };
+
+    const renderFirmaSection = () => {
+      const nombreMedico = `${informe.medicos?.nombres || ''} ${informe.medicos?.apellidos || ''}`.trim();
+      if (!nombreMedico && !firmaBase64 && !selloBase64) return '';
+      const partes: string[] = [];
+      if (nombreMedico) partes.push(`<p class="firma-nombre"><strong>Dr. ${nombreMedico}</strong></p>`);
+      const med = informe.medicos || {};
+      if (med.especialidad && String(med.especialidad).trim()) partes.push(`<p class="firma-dato">Especialidad: ${this.escapeHtmlPdf(med.especialidad)}</p>`);
+      if (med.mpps && String(med.mpps).trim()) partes.push(`<p class="firma-dato">MPPS: ${this.escapeHtmlPdf(med.mpps)}</p>`);
+      if (med.cm && String(med.cm).trim()) partes.push(`<p class="firma-dato">CM: ${this.escapeHtmlPdf(med.cm)}</p>`);
+      if (firmaBase64 || selloBase64) {
+        partes.push('<div class="firma-imagenes">');
+        if (firmaBase64) partes.push(`<img src="${firmaBase64}" alt="Firma digital" class="firma-img">`);
+        if (selloBase64) partes.push(`<img src="${selloBase64}" alt="Sello húmedo" class="sello-img">`);
+        partes.push('</div>');
+      }
+      return `<div class="firma-pdf">${partes.join('')}</div>`;
+    };
+
+    const renderFooter = () => `
+          <div class="footer">
+            ${clinicaConfig.direccion ? `<p>${clinicaConfig.direccion}</p>` : ''}
+          </div>`;
+
+    /** Bloque compacto solo de paciente para repetir en cada página del PDF (ej. Paciente: Sandra Romero | Cédula: V13892514 | Edad: 40 años) */
+    const renderDatosPacienteEnPagina = () => {
+      const p = informe.paciente || {};
+      const partesPaciente: string[] = [];
+      const nombrePaciente = `${p.nombres || ''} ${p.apellidos || ''}`.trim();
+      if (nombrePaciente) partesPaciente.push(this.escapeHtmlPdf(nombrePaciente));
+      if (p.cedula) partesPaciente.push(`Cédula: ${this.escapeHtmlPdf(p.cedula)}`);
+      if (p.edad) partesPaciente.push(`Edad: ${this.escapeHtmlPdf(String(p.edad))} años`);
+      if (partesPaciente.length === 0) return '';
+      const lineaPaciente = `<strong>Paciente:</strong> ${partesPaciente.join(' | ')}`;
+      return `
+          <div class="page-datos-paciente-medico">
+            <div class="page-datos-linea">${lineaPaciente}</div>
+          </div>`;
+    };
+
+    let bodyContent: string;
+    const stripInformeContentWrapper = (html: string): string => {
+      const match = html.match(/^<div class="informe-content">([\s\S]*)<\/div>$/);
+      const inner = match?.[1];
+      return inner !== undefined ? inner : html;
+    };
+
+    if (tieneControles) {
+      const introProcessed = parsed.introHtml
+        ? this.procesarContenidoInforme(parsed.introHtml)
+        : '';
+      const introInner = introProcessed ? stripInformeContentWrapper(introProcessed) : '';
+      const pages: string[] = [];
+      for (let i = 0; i < parsed.controls.length; i++) {
+        const control = parsed.controls[i];
+        if (!control) continue;
+        const isFirst = i === 0;
+        const pageClass = isFirst ? 'page' : 'page control-page';
+        let content = '';
+        if (isFirst) {
+          content += `<div class="informe-content">${introInner}${introInner && control.html ? '' : ''}${control.html}</div>`;
+        } else {
+          content += `<div class="informe-content">${control.html}</div>`;
+        }
+        pages.push(`
+        <div class="${pageClass}">
+          ${renderHeader(control.date)}
+          ${renderDatosPacienteEnPagina()}
+          <div class="content">
+            ${content}
+          </div>
+          ${renderFirmaSection()}
+          ${renderFooter()}
+        </div>`);
+      }
+      bodyContent = pages.join('\n');
+    } else {
+      const contenidoProcesado = this.procesarContenidoInforme(
+        parsed.introHtml || informe.contenido || ''
+      );
+      bodyContent = `
+        <div class="page">
+          ${renderHeader()}
+          ${renderDatosPacienteEnPagina()}
+          <div class="content">
+            ${contenidoProcesado}
+          </div>
+          ${renderFirmaSection()}
+          ${renderFooter()}
+        </div>`;
+    }
 
     return `
       <!DOCTYPE html>
@@ -371,7 +537,7 @@ export class PDFService {
           .document-title {
             font-size: 12pt;
             font-weight: bold;
-            color: #E91E63;
+            color: #1976D2;
             margin-bottom: 2px;
           }
           
@@ -381,17 +547,47 @@ export class PDFService {
             margin-bottom: 3px;
           }
           
+          .header-content-with-date {
+            align-items: flex-end;
+            text-align: right;
+          }
+          .header-control-date {
+            font-size: 9pt;
+            color: #1976D2;
+            font-weight: bold;
+            margin-top: 2px;
+          }
+          
+          .page-datos-paciente-medico {
+            font-size: 8pt;
+            color: #444;
+            margin-bottom: 6px;
+            padding: 4px 0;
+            border-bottom: 1px solid #e0e0e0;
+            break-inside: avoid;
+          }
+          .page-datos-paciente-medico .page-datos-linea {
+            margin-bottom: 2px;
+          }
+          .page-datos-paciente-medico .page-datos-linea:last-child {
+            margin-bottom: 0;
+          }
+          
+          .control-page {
+            page-break-before: always;
+          }
+          
           .content {
             margin: 6px 0;
             text-align: justify;
           }
           
           .content h2 {
-            color: #E91E63;
+            color: #1976D2;
             margin: 8px 0 4px 0;
             font-size: 11pt;
             font-weight: bold;
-            border-bottom: 1px solid #E91E63;
+            border-bottom: 1px solid #1976D2;
             padding-bottom: 2px;
             break-after: avoid;
             break-inside: avoid;
@@ -400,7 +596,7 @@ export class PDFService {
           .content h3 {
             color: #333;
             margin: 6px 0 4px 0;
-            font-size: 10pt;
+            font-size: 9pt;
             font-weight: bold;
             break-after: avoid;
             break-inside: avoid;
@@ -418,11 +614,8 @@ export class PDFService {
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 6px 18px;
-            margin: 6px 0;
-            padding: 8px;
-            background-color: #f8f9fa;
-            border: 1px solid #e9ecef;
-            border-left: 3px solid #E91E63;
+            margin: 6px 0 12px 0;
+            padding: 0;
             font-size: 9pt;
           }
           
@@ -439,7 +632,7 @@ export class PDFService {
           
           .patient-data-label {
             font-weight: bold;
-            color: #E91E63;
+            color: #1976D2;
             font-size: 8pt;
             margin-bottom: 1px;
           }
@@ -455,9 +648,32 @@ export class PDFService {
             padding: 8px;
             background-color: #f8f9fa;
             border: 1px solid #e9ecef;
-            border-left: 3px solid #E91E63;
+            border-left: 3px solid #1976D2;
             font-size: 9pt;
             line-height: 1.3;
+          }
+          .firma-pdf {
+            margin-top: 14px;
+            break-inside: avoid;
+          }
+          .firma-pdf .firma-nombre {
+            margin-bottom: 6px;
+            font-size: 9pt;
+          }
+          .firma-pdf .firma-dato {
+            margin: 2px 0;
+            font-size: 8pt;
+          }
+          .firma-imagenes {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+          }
+          .firma-img, .sello-img {
+            max-width: 120px;
+            max-height: 60px;
+            object-fit: contain;
           }
           
           .signature-section {
@@ -520,118 +736,21 @@ export class PDFService {
         </style>
       </head>
       <body>
-        <div class="page">
-          <div class="header">
-            <div class="logo-section">
-                     ${clinicaConfig.logo ? 
-                       `<img src="${clinicaConfig.logo}" alt="${clinicaConfig.nombre} Logo" class="logo">` :
-                       `<div class="logo-fallback" style="width: 140px; height: 140px; background: ${clinicaConfig.color}; border-radius: 6px; margin: 0 0 3px 0; display: flex; align-items: center; justify-content: center; color: white; font-size: 42px; font-weight: bold; box-shadow: 0 1px 4px rgba(0,0,0,0.1);">${clinicaConfig.nombre.charAt(0)}</div>`
-                     }
-              <div class="clinic-info">
-                ${clinicaConfig.descripcion} - ${clinicaConfig.especialidad}
-              </div>
-            </div>
-            
-            <div class="header-content">
-              <div class="document-title">Informe Médico</div>
-              <div class="document-number">N° ${informe.numero_informe}</div>
-            </div>
-          </div>
-          
-          <div class="content">
-            ${this.generarSeccionDatosPaciente(informe.paciente)}
-            ${this.procesarContenidoInforme(informe.contenido)}
-          </div>
-          
-          <div class="signature-section">
-            ${firmaBase64 ? `
-              <div class="signature-image-container">
-                <img src="${firmaBase64}" alt="Firma Digital" class="signature-image">
-              </div>
-            ` : `
-              <div class="signature-line"></div>
-            `}
-            <div class="signature-text">
-              <strong>Dr. ${informe.medicos?.nombres || ''} ${informe.medicos?.apellidos || ''}</strong><br>
-              ${informe.medicos?.especialidad ? `Especialista en ${informe.medicos.especialidad}` : 'Médico'}<br>
-              ${informe.medicos?.cedula ? `Cédula: ${informe.medicos.cedula}` : ''}
-              ${(informe.medicos?.mpps || informe.medicos?.cm) ? `<br>${informe.medicos?.mpps ? `MSDS ${informe.medicos.mpps}` : ''}${informe.medicos?.mpps && informe.medicos?.cm ? ' - ' : ''}${informe.medicos?.cm ? `CMD ${informe.medicos.cm}` : ''}` : ''}
-            </div>
-          </div>
-          
-          <div class="date-section">
-            <p><strong>Fecha de emisión:</strong> ${fechaEmision}</p>
-          </div>
-          
-          <div class="footer">
-            ${clinicaConfig.direccion ? `<p>${clinicaConfig.direccion}</p>` : ''}
-          </div>
-        </div>
+        ${bodyContent}
       </body>
       </html>
     `;
   }
 
-  /**
-   * Genera la sección de datos del paciente para el PDF
-   */
-  private generarSeccionDatosPaciente(paciente: any): string {
-    if (!paciente) {
-      return '';
-    }
-
-    const nombreCompleto = `${paciente.nombres || ''} ${paciente.apellidos || ''}`.trim();
-    
-    if (!nombreCompleto) {
-      return '';
-    }
-
-    let html = '<div class="patient-data">';
-    html += '<h2>Datos del Paciente</h2>';
-    
-    if (nombreCompleto) {
-      html += '<div class="patient-data-item">';
-      html += '<span class="patient-data-label">Nombre:</span>';
-      html += `<span class="patient-data-value">${nombreCompleto}</span>`;
-      html += '</div>';
-    }
-    
-    if (paciente.edad) {
-      html += '<div class="patient-data-item">';
-      html += '<span class="patient-data-label">Edad:</span>';
-      html += `<span class="patient-data-value">${paciente.edad} años</span>`;
-      html += '</div>';
-    }
-    
-    if (paciente.cedula) {
-      html += '<div class="patient-data-item">';
-      html += '<span class="patient-data-label">Cédula:</span>';
-      html += `<span class="patient-data-value">${paciente.cedula}</span>`;
-      html += '</div>';
-    }
-    
-    if (paciente.telefono) {
-      html += '<div class="patient-data-item">';
-      html += '<span class="patient-data-label">Teléfono:</span>';
-      html += `<span class="patient-data-value">${paciente.telefono}</span>`;
-      html += '</div>';
-    }
-    
-    if (paciente.email) {
-      html += '<div class="patient-data-item">';
-      html += '<span class="patient-data-label">Email:</span>';
-      html += `<span class="patient-data-value">${paciente.email}</span>`;
-      html += '</div>';
-    }
-    
-    html += '</div>';
-    
-    return html;
+  private escapeHtmlPdf(text: string): string {
+    if (!text) return '';
+    return String(text)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
   }
 
-  /**
-   * Procesa el contenido del informe para aplicar estilos de columnas
-   */
   /**
    * Procesa el contenido del informe para aplicar estilos
    * Mantiene el orden original del contenido sin duplicar datos
@@ -649,6 +768,15 @@ export class PDFService {
     // ya que estos datos no deben aparecer en el PDF (solo la firma del médico)
     // Mantener el resto del contenido en su orden original
     
+    // Quitar título "Historial de consultas" del PDF
+    contenidoProcesado = contenidoProcesado.replace(
+      /<h3><strong>Historial de consultas:\s*<\/strong><\/h3>/gi,
+      ''
+    );
+
+    // Quitar solo líneas "No especificada" y textos no deseados; se mantiene el nombre del médico
+    contenidoProcesado = this.limpiarLineasFirma(contenidoProcesado);
+
     // Remover "Datos del Paciente" (desde el h2 hasta el siguiente h2, h3, hr o div)
     contenidoProcesado = contenidoProcesado.replace(
       /<h2>Datos del Paciente<\/h2>[\s\S]*?(?=<h2>Datos del Médico|<h2>|<h3>|<hr>|<div class="historia-seccion">|<div class="antecedentes-seccion">|$)/gi,
@@ -661,8 +789,8 @@ export class PDFService {
       ''
     );
     
-    // Limpiar múltiples <hr> consecutivos que puedan quedar
-    contenidoProcesado = contenidoProcesado.replace(/(<hr>\s*){2,}/gi, '<hr>');
+    // Quitar separadores <hr> del contenido (no usar separador entre antecedentes e historia ni dentro del contenido)
+    contenidoProcesado = contenidoProcesado.replace(/<hr\s*\/?>\s*/gi, '');
     
     // Limpiar espacios en blanco excesivos
     contenidoProcesado = contenidoProcesado.replace(/\n{3,}/g, '\n\n');
@@ -772,7 +900,7 @@ export class PDFService {
         descripcion: process.env['CLINICA_DESCRIPCION'] || 'Centro Médico Especializado',
         direccion: process.env['CLINICA_DIRECCION'] || '',
         especialidad: 'Ginecología y Obstetricia',
-        color: '#E91E63',
+        color: '#1976D2',
         logoPath: process.env['LOGO_PATH'] || './assets/logos/clinica/logo.png',
         logo: '' // Se llenará con base64
       },

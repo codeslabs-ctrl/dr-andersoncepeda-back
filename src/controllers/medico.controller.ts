@@ -41,9 +41,12 @@ export class MedicoController {
           return;
         }
 
+        const row = result.rows[0];
+        const nombreEspecialidad = row.nombre_especialidad || 'Especialidad no encontrada';
         const medico = {
-          ...result.rows[0],
-          especialidad_nombre: result.rows[0].nombre_especialidad || 'Especialidad no encontrada'
+          ...row,
+          especialidad: nombreEspecialidad,
+          especialidad_nombre: nombreEspecialidad
         };
 
         const response: ApiResponse = {

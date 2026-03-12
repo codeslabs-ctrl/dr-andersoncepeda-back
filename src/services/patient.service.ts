@@ -210,15 +210,15 @@ export class PatientService {
 
           await client.query(
             `INSERT INTO historico_pacientes 
-             (paciente_id, motivo_consulta, diagnostico, conclusiones, plan, medico_id, clinica_alias, fecha_consulta)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+             (paciente_id, medico_id, consulta_id, titulo, motivo_consulta, diagnostico, conclusiones, plan, clinica_alias, fecha_consulta)
+             VALUES ($1, $2, NULL, 'registro_inicial', $3, $4, $5, $6, $7, $8)`,
             [
               medicalData.paciente_id,
+              medicalData.medico_id,
               medicalData.motivo_consulta,
               medicalData.diagnostico,
               medicalData.conclusiones,
               medicalData.plan,
-              medicalData.medico_id,
               medicalData.clinica_alias,
               medicalData.fecha_consulta
             ]
@@ -236,7 +236,14 @@ export class PatientService {
           console.error('❌ Error al hacer rollback:', rollbackError);
         }
         console.error('❌ PatientService - Error en transacción PostgreSQL:', dbError);
-        throw new Error(`Transaction failed: ${dbError.message}`);
+        const msg = dbError?.message ?? String(dbError);
+        if (/consulta_id|violates not-null|not-null constraint/i.test(msg)) {
+          throw new Error('No se pudo guardar el historial del paciente. Por favor, intente de nuevo.');
+        }
+        if (/Transaction failed|violates.*constraint|relation\s+"/i.test(msg)) {
+          throw new Error('No se pudo completar el registro. Por favor, intente de nuevo o contacte al administrador.');
+        }
+        throw new Error(`Transaction failed: ${msg}`);
       } finally {
         client.release();
       }
@@ -447,9 +454,14 @@ export class PatientService {
         
         console.log('🔍 PostgreSQL query - medico_id:', medicoId, 'today:', today);
         
-        // Query to get unique patients from both historico_pacientes and consultas_pacientes
+        // Query to get unique patients from both historico_pacientes and consultas_pacientes.
+        // tiene_consulta: true si el paciente tiene al menos una consulta (para mostrar Historial vs Agendar una Consulta).
         const result = await client.query(`
-          SELECT DISTINCT p.*
+          SELECT DISTINCT p.*,
+            EXISTS (
+              SELECT 1 FROM consultas_pacientes c
+              WHERE c.paciente_id = p.id AND c.medico_id = $1
+            ) AS tiene_consulta
           FROM pacientes p
           WHERE p.id IN (
             SELECT DISTINCT paciente_id 

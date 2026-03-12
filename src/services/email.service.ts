@@ -216,6 +216,8 @@ export class EmailService {
       duracion: number;
       observaciones?: string;
       direccionClinica?: string;
+      bloqueDireccion?: string;
+      nombreClinica?: string;
     }
   ): Promise<{ paciente: boolean; medico: boolean }> {
     const results = { paciente: false, medico: false };
@@ -555,6 +557,8 @@ export class EmailService {
         Tipo: {{tipo}}
         Duración: {{duracion}} minutos
         Observaciones: {{observaciones}}
+        Lugar de atención: {{nombreClinica}}
+        Dirección: {{direccionClinica}}
         
         Importante:
         - Llegue 15 minutos antes
