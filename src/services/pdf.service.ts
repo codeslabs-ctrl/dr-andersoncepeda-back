@@ -278,6 +278,10 @@ export class PDFService {
     out = out.replace(/<p[^>]*>\s*Firma Digital del Sistema\s*<\/p>/gi, '');
     out = out.replace(/<p[^>]*>\s*Documento generado electrónicamente\s*<\/p>/gi, '');
     out = out.replace(/<p[^>]*>\s*Fecha:\s*[^<]*<\/p>/gi, '');
+    // Quitar nombre del médico al final del contenido (ya aparece en el bloque de firma)
+    out = out.replace(/\s*<p[^>]*>\s*(<strong>\s*)?Dr\.\s+[\w\sáéíóúñÁÉÍÓÚÑ]+(\s*<\/strong>)?\s*<\/p>\s*$/gi, '');
+    // Quitar " Dr. Nombre Apellido" cuando está al final de un párrafo (mismo <p> que el texto)
+    out = out.replace(/([."])\s*Dr\.\s+[\w\sáéíóúñÁÉÍÓÚÑ]+\s*<\/p>/gi, '$1</p>');
     return out.trim();
   }
 
@@ -790,6 +794,11 @@ export class PDFService {
     
     // Quitar separadores <hr> del contenido (no usar separador entre antecedentes e historia ni dentro del contenido)
     contenidoProcesado = contenidoProcesado.replace(/<hr\s*\/?>\s*/gi, '');
+    
+    // Quitar nombre del médico al final del contenido (ya está en el bloque de firma)
+    contenidoProcesado = contenidoProcesado.replace(/\s*<p[^>]*>\s*(<strong>\s*)?Dr\.\s+[\w\sáéíóúñÁÉÍÓÚÑ]+(\s*<\/strong>)?\s*<\/p>\s*$/gi, '').trim();
+    // Quitar " Dr. Nombre Apellido" cuando está al final de un párrafo (mismo <p> que el texto)
+    contenidoProcesado = contenidoProcesado.replace(/([."])\s*Dr\.\s+[\w\sáéíóúñÁÉÍÓÚÑ]+\s*<\/p>/gi, '$1</p>');
     
     // Limpiar espacios en blanco excesivos
     contenidoProcesado = contenidoProcesado.replace(/\n{3,}/g, '\n\n');
