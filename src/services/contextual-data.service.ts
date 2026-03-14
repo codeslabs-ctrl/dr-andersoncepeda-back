@@ -311,14 +311,15 @@ export class ContextualDataService {
       
       console.log(`📊 Datos sin filtro de clínica:`, allResult.rows.length);
       
-      // Luego con el filtro de clínica (manejar caso cuando clinica_alias es null)
+      // Solo controles cuya consulta esté completada o finalizada (no agendada ni en progreso)
       const result = await client.query(
-        `SELECT * FROM historico_pacientes
-         WHERE paciente_id = $1
-           AND medico_id = $2
-           AND (clinica_alias = $3 OR clinica_alias IS NULL)
-           AND consulta_id IS NOT NULL
-         ORDER BY fecha_consulta DESC
+        `SELECT h.* FROM historico_pacientes h
+         INNER JOIN consultas_pacientes c ON c.id = h.consulta_id
+         WHERE h.paciente_id = $1
+           AND h.medico_id = $2
+           AND (h.clinica_alias = $3 OR h.clinica_alias IS NULL)
+           AND c.estado_consulta IN ('completada', 'finalizada')
+         ORDER BY h.fecha_consulta DESC
          LIMIT $4`,
         [pacienteId, medicoId, clinicaAlias, limit]
       );

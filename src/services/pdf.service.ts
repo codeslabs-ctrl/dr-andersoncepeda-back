@@ -320,10 +320,12 @@ export class PDFService {
   }
 
   /**
-   * Genera el HTML para el PDF
+   * Genera el HTML para el PDF.
+   * Dirección al pie: viene de la clínica de atención del informe (clinica_atencion_id → direccion_clinica)
+   * o de la config por alias (CLINICA_DIRECCION en .env). Logo: de la clínica de atención (logo_path en BD)
+   * o de la config (LOGO_PATH / assets/logos/...); el backend lee el archivo y lo convierte a base64.
    */
   private async generarHTMLParaPDF(informe: any, firmaBase64: string = '', selloBase64: string = ''): Promise<string> {
-      // Obtener configuración de la clínica
       const clinicaAlias = process.env['CLINICA_ALIAS'] || 'default';
       let clinicaConfig = await this.obtenerConfiguracionClinica(clinicaAlias);
       const capId = informe.clinica_atencion_id;
@@ -392,7 +394,7 @@ export class PDFService {
 
     const renderFooter = () => `
           <div class="footer">
-            ${clinicaConfig.direccion ? `<p>${clinicaConfig.direccion}</p>` : ''}
+            ${clinicaConfig.direccion ? `<p>${this.escapeHtmlPdf(clinicaConfig.direccion)}</p>` : ''}
           </div>`;
 
     /** Bloque compacto solo de paciente para repetir en cada página del PDF (ej. Paciente: Sandra Romero | Cédula: V13892514 | Edad: 40 años) */
@@ -508,12 +510,9 @@ export class PDFService {
                  }
           
                  .logo {
-                   /* Logo más grande para mejor visibilidad */
-                   width: 140px;
-                   height: 140px;
-                   margin: 0 0 3px 0;
+                   /* Tamaño real de la imagen (sin forzar ancho/alto) */
                    display: block;
-                   object-fit: contain;
+                   margin: 0 0 3px 0;
                    break-inside: avoid;
                  }
           
@@ -813,7 +812,7 @@ export class PDFService {
   // Eliminado: extraerValor (ya no se usa)
 
   /**
-   * Convierte el logo a base64
+   * Convierte el logo a base64. Busca en varias raíces (backend, cwd, cwd/backend) y prueba extensiones si faltan.
    */
   private async obtenerLogoBase64(logoPath: string): Promise<string> {
     try {
@@ -821,59 +820,52 @@ export class PDFService {
         console.warn('⚠️ No se proporcionó ruta de logo');
         return '';
       }
+      const pathForResolve = logoPath.replace(/^\/+/, '').replace(/\\/g, '/');
 
-      // Resolver rutas relativas desde la raíz del backend.
-      // En runtime compilado, __dirname apunta a dist/services/, por eso subimos 2 niveles para llegar a dist/
-      const distRoot = path.join(__dirname, '..', '..'); // dist/ cuando está compilado
-      const projectRoot = path.join(distRoot, '..'); // raíz del proyecto
+      const distRoot = path.join(__dirname, '..', '..');
+      const projectRoot = path.join(distRoot, '..');
+      const cwd = process.cwd();
+      const roots = [
+        projectRoot,
+        cwd,
+        path.join(cwd, 'backend'),
+        distRoot,
+        path.join(cwd, 'backend', 'dist')
+      ];
 
-      const resolveFromRoot = (p: string, root: string): string => {
-        if (path.isAbsolute(p)) return p;
-        return path.resolve(root, p);
-      };
+      const resolveFrom = (root: string, p: string) => path.resolve(root, p);
 
-      // Candidatos (fallback): primero dist/assets/ (cuando está compilado), luego assets/ (desarrollo)
+      const ext = path.extname(pathForResolve).toLowerCase();
+      const pathsToTry = ext
+        ? [pathForResolve]
+        : ['png', 'jpg', 'jpeg', 'svg', 'webp'].map(e => pathForResolve + (pathForResolve.endsWith('.') ? e : '.' + e));
+
       const candidates: string[] = [];
-
-      // Cuando está compilado, los assets están en dist/assets/
-      const normalized = logoPath.replace(/\\/g, '/');
-      if (normalized.startsWith('./assets/')) {
-        // Buscar primero en dist/assets/ (cuando está compilado)
-        candidates.push(resolveFromRoot(normalized.replace('./assets/', './dist/assets/'), distRoot));
-        // Luego en assets/ desde la raíz del proyecto (desarrollo)
-        candidates.push(resolveFromRoot(logoPath, projectRoot));
-      } else if (normalized.startsWith('assets/')) {
-        // Buscar primero en dist/assets/ (cuando está compilado)
-        candidates.push(resolveFromRoot('dist/' + logoPath, distRoot));
-        // Luego en assets/ desde la raíz del proyecto (desarrollo)
-        candidates.push(resolveFromRoot(logoPath, projectRoot));
-      } else {
-        // Ruta absoluta o relativa sin prefijo assets/
-        candidates.push(resolveFromRoot(logoPath, distRoot));
-        candidates.push(resolveFromRoot(logoPath, projectRoot));
+      for (const root of roots) {
+        for (const p of pathsToTry) {
+          candidates.push(resolveFrom(root, p));
+        }
       }
 
       for (const candidate of candidates) {
-        console.log('🔍 Buscando logo en:', candidate);
         if (!fs.existsSync(candidate)) continue;
 
         const logoBuffer = fs.readFileSync(candidate);
         const base64 = logoBuffer.toString('base64');
-        const ext = path.extname(candidate).toLowerCase();
+        const candidateExt = path.extname(candidate).toLowerCase();
         const mimeType =
-          ext === '.svg' ? 'image/svg+xml' :
-          ext === '.webp' ? 'image/webp' :
-          ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' :
+          candidateExt === '.svg' ? 'image/svg+xml' :
+          candidateExt === '.webp' ? 'image/webp' :
+          candidateExt === '.jpg' || candidateExt === '.jpeg' ? 'image/jpeg' :
           'image/png';
 
-        console.log('✅ Logo cargado correctamente, tipo:', mimeType);
+        console.log('✅ Logo cargado:', candidate);
         return `data:${mimeType};base64,${base64}`;
       }
 
-      console.warn('⚠️ Logo no encontrado. Se intentó:', candidates);
-      console.warn('⚠️ Continuando sin logo');
+      console.warn('⚠️ Logo no encontrado. logoPath=', logoPath, 'candidatos=', candidates.slice(0, 5), '...');
     } catch (error: any) {
-      console.warn('⚠️ Error leyendo logo (continuando sin logo):', error.message);
+      console.warn('⚠️ Error leyendo logo:', error.message);
     }
     return '';
   }
@@ -882,9 +874,6 @@ export class PDFService {
    * Obtiene la configuración específica de la clínica
    */
   private async obtenerConfiguracionClinica(clinicaAlias: string): Promise<any> {
-    // Obtener la URL base del frontend desde variables de entorno
-    const frontendUrl = process.env['FRONTEND_URL'] || 'http://localhost:4200';
-    
     const configuraciones: { [key: string]: any } = {
       'demomed': {
         nombre: process.env['CLINICA_NOMBRE'] || 'DemoMed',
@@ -916,16 +905,20 @@ export class PDFService {
       'clinica2': {
         nombre: 'Clínica San José',
         descripcion: 'Centro de Salud Integral',
+        direccion: process.env['CLINICA_DIRECCION'] || '',
         especialidad: 'Medicina General',
         color: '#2196F3',
-        logo: `${frontendUrl}/assets/logos/clinica2/logo.svg`
+        logoPath: process.env['LOGO_PATH'] || './assets/logos/clinica2/logo.svg',
+        logo: '' // Se llenará con base64
       },
       'default': {
-        nombre: 'Centro Médico',
-        descripcion: 'Servicios de Salud',
+        nombre: process.env['CLINICA_NOMBRE'] || 'Centro Médico',
+        descripcion: process.env['CLINICA_DESCRIPCION'] || 'Servicios de Salud',
+        direccion: process.env['CLINICA_DIRECCION'] || '',
         especialidad: 'Medicina General',
         color: '#666666',
-        logo: `${frontendUrl}/assets/logos/default/logo.svg`
+        logoPath: process.env['LOGO_PATH'] || './assets/logos/clinica/logo.png',
+        logo: '' // Se llenará con base64
       }
     };
 

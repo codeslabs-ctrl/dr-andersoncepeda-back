@@ -739,29 +739,32 @@ export class HistoricoService {
 
           const historicoActualizado = fullResult.rows[0];
           
-          // Buscar la consulta relacionada en consultas_pacientes para actualizar su estado
+          // Usar la consulta asociada al historial (consulta_id); si no hay, buscar la más reciente
+          let consultaId: number | null = historicoActualizado.consulta_id && historicoActualizado.consulta_id > 0
+            ? Number(historicoActualizado.consulta_id)
+            : null;
           console.log('🔍 updateHistorico - paciente_id:', historicoActualizado.paciente_id);
           console.log('🔍 updateHistorico - medico_id:', historicoActualizado.medico_id);
           console.log('🔍 updateHistorico - fecha_consulta:', historicoActualizado.fecha_consulta);
+          console.log('🔍 updateHistorico - consulta_id del historial:', historicoActualizado.consulta_id);
           
-          // Buscar la consulta más reciente relacionada con esta historia
-          const consultaQuery = `
-            SELECT id, estado_consulta, fecha_pautada
-            FROM consultas_pacientes
-            WHERE paciente_id = $1
-              AND medico_id = $2
-              AND estado_consulta IN ('agendada', 'reagendada', 'en_progreso', 'por_agendar', 'completada')
-            ORDER BY fecha_pautada DESC, fecha_creacion DESC
-            LIMIT 1
-          `;
-          
-          const consultaResult = await client.query(consultaQuery, [
-            historicoActualizado.paciente_id,
-            historicoActualizado.medico_id
-          ]);
-          
-          const consultaId = consultaResult.rows.length > 0 ? consultaResult.rows[0].id : null;
-          console.log('🔍 updateHistorico - Consulta encontrada:', consultaId);
+          if (!consultaId) {
+            const consultaQuery = `
+              SELECT id, estado_consulta, fecha_pautada
+              FROM consultas_pacientes
+              WHERE paciente_id = $1
+                AND medico_id = $2
+                AND estado_consulta IN ('agendada', 'reagendada', 'en_progreso', 'por_agendar', 'completada')
+              ORDER BY fecha_pautada DESC, fecha_creacion DESC
+              LIMIT 1
+            `;
+            const consultaResult = await client.query(consultaQuery, [
+              historicoActualizado.paciente_id,
+              historicoActualizado.medico_id
+            ]);
+            consultaId = consultaResult.rows.length > 0 ? consultaResult.rows[0].id : null;
+          }
+          console.log('🔍 updateHistorico - Consulta a actualizar (completada):', consultaId);
           
           if (consultaId) {
             const fechaConsultaUpdate = historicoActualizado.fecha_consulta || new Date().toISOString().split('T')[0];
