@@ -1,0 +1,36 @@
+# Dependencias
+node_modules/
+
+# Archivos de configuración con secretos (copiar desde *.example y rellenar)
+config.env
+config.dev.env
+chatbot/.env
+
+# Build
+dist/
+*.tsbuildinfo
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs y caché
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.cache
+
+# Testing
+coverage/
+.nyc_output/
+*.lcov
+
+# Assets subidos (firmas, etc.) si no deben versionarse
+# assets/firmas/
+# uploads/
