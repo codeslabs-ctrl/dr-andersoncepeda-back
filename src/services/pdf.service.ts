@@ -455,11 +455,13 @@ export class PDFService {
       ].map((m) => m[0]);
       if (bloques.length >= 2) {
         const tailCount = Math.min(2, bloques.length - 1);
-        const tail = bloques.slice(-tailCount).join('');
-        const splitAt = principal.lastIndexOf(bloques[bloques.length - tailCount]);
-        if (splitAt > 0) {
-          cola = principal.slice(splitAt).trim();
-          principal = principal.slice(0, splitAt).trim();
+        const firstTailBlock = bloques[bloques.length - tailCount];
+        if (firstTailBlock) {
+          const splitAt = principal.lastIndexOf(firstTailBlock);
+          if (splitAt > 0) {
+            cola = principal.slice(splitAt).trim();
+            principal = principal.slice(0, splitAt).trim();
+          }
         }
       }
     }
@@ -850,7 +852,9 @@ export class PDFService {
     return html.replace(/<table[^>]*>([\s\S]*?)<\/table>/gi, (full) => {
       const rows: string[][] = [];
       for (const rowMatch of full.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)) {
-        const cells = [...rowMatch[1].matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi)].map((m) =>
+        const rowHtml = rowMatch[1];
+        if (!rowHtml) continue;
+        const cells = [...rowHtml.matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi)].map((m) =>
           this.stripTagsKeepTabs(m[1] ?? '').trim()
         );
         if (cells.length > 0) rows.push(cells);
@@ -1220,13 +1224,15 @@ export class PDFService {
     if (blocks.length >= 2) {
       const tailCount = Math.min(3, blocks.length - 1);
       const tailBlocks = blocks.slice(-tailCount);
-      const cola = tailBlocks.join('');
-      const splitAt = contenidoInner.lastIndexOf(tailBlocks[0]);
-      if (splitAt > 0) {
-        return {
-          principal: contenidoInner.slice(0, splitAt).trim(),
-          cola: contenidoInner.slice(splitAt).trim()
-        };
+      const firstBlock = tailBlocks[0];
+      if (firstBlock) {
+        const splitAt = contenidoInner.lastIndexOf(firstBlock);
+        if (splitAt > 0) {
+          return {
+            principal: contenidoInner.slice(0, splitAt).trim(),
+            cola: contenidoInner.slice(splitAt).trim()
+          };
+        }
       }
     }
 
@@ -1234,40 +1240,42 @@ export class PDFService {
   }
 
   /**
+   * Script ejecutado en el navegador (Puppeteer). Como string evita errores tsc sin lib DOM.
+   */
+  private static readonly AJUSTAR_GRUPO_FIRMA_SCRIPT = `
+    const pageContentHeight = ((297 - margin * 2) * 96) / 25.4;
+    const grupo = document.querySelector('.informe-cierre-grupo');
+    const principal = document.querySelector('.informe-content-principal');
+    if (!grupo || !principal) return;
+    let cola = document.querySelector('.informe-content-cola');
+    if (!cola) {
+      cola = document.createElement('div');
+      cola.className = 'informe-content informe-content-cola';
+      grupo.insertBefore(cola, grupo.firstChild);
+    }
+    let guard = 0;
+    while (guard < 10) {
+      const rect = grupo.getBoundingClientRect();
+      const top = rect.top + window.scrollY;
+      const pageStart = Math.floor(top / pageContentHeight) * pageContentHeight;
+      const offsetOnPage = top - pageStart;
+      if (offsetOnPage >= pageContentHeight * 0.08) break;
+      const children = [...principal.children];
+      if (children.length === 0) break;
+      const last = children[children.length - 1];
+      if (!last) break;
+      cola.insertBefore(last, cola.firstChild);
+      guard++;
+    }
+  `;
+
+  /**
    * Si la firma quedaría aislada al inicio de una página, mueve bloques del cuerpo principal
    * al grupo de cierre para que compartan página.
    */
   private async ajustarGrupoFirmaPdf(page: any, marginMm: number): Promise<void> {
-    await page.evaluate((margin: number) => {
-      const pageContentHeight = ((297 - margin * 2) * 96) / 25.4;
-
-      const grupo = document.querySelector('.informe-cierre-grupo');
-      const principal = document.querySelector('.informe-content-principal');
-      if (!grupo || !principal) return;
-
-      let cola = document.querySelector('.informe-content-cola');
-      if (!cola) {
-        cola = document.createElement('div');
-        cola.className = 'informe-content informe-content-cola';
-        grupo.insertBefore(cola, grupo.firstChild);
-      }
-
-      let guard = 0;
-      while (guard < 10) {
-        const rect = grupo.getBoundingClientRect();
-        const top = rect.top + window.scrollY;
-        const pageStart = Math.floor(top / pageContentHeight) * pageContentHeight;
-        const offsetOnPage = top - pageStart;
-        if (offsetOnPage >= pageContentHeight * 0.08) break;
-
-        const children = [...principal.children];
-        if (children.length === 0) break;
-        const last = children[children.length - 1];
-        if (!last) break;
-        cola.insertBefore(last, cola.firstChild);
-        guard++;
-      }
-    }, marginMm);
+    const fn = new Function('margin', PDFService.AJUSTAR_GRUPO_FIRMA_SCRIPT) as (margin: number) => void;
+    await page.evaluate(fn, marginMm);
   }
 
   // Eliminado: formatearDatosPaciente (ya no se usa)
