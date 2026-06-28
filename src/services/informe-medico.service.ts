@@ -1,4 +1,4 @@
-import { postgresPool } from '../config/database.js';
+import { acquirePoolClientWithRetry, postgresPool } from '../config/database.js';
 
 export interface InformeMedico {
   id?: number;
@@ -83,7 +83,7 @@ export class InformeMedicoService {
 
   async crearInforme(informe: Omit<InformeMedico, 'id' | 'fecha_creacion' | 'fecha_actualizacion' | 'numero_informe' | 'numero_secuencial'>): Promise<InformeMedico> {
     const maxIntentos = 3;
-    const client = await postgresPool.connect();
+    const client = await acquirePoolClientWithRetry(postgresPool, { maxAttempts: 5, delayMs: 3000 });
     
     try {
       for (let intentos = 0; intentos < maxIntentos; intentos++) {

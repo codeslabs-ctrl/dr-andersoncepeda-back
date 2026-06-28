@@ -72,9 +72,12 @@ export class InformeMedicoController {
       });
     } catch (error: any) {
       console.error('Error en crearInforme:', error);
-      res.status(500).json({
+      const isDbTimeout = error?.code === 'ETIMEDOUT' || error?.code === 'ECONNREFUSED';
+      res.status(isDbTimeout ? 503 : 500).json({
         success: false,
-        message: 'Error creando informe médico',
+        message: isDbTimeout
+          ? 'No se pudo conectar con la base de datos. Verifique su conexión a internet e intente de nuevo en unos segundos.'
+          : 'Error creando informe médico',
         error: error.message
       });
     }

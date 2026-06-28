@@ -4,8 +4,14 @@ import dotenv from 'dotenv';
 // Load environment variables
 // Use process.cwd() to find config.env in the project root
 import path from 'path';
+
 const configDir = process.cwd();
-dotenv.config({ path: path.join(configDir, 'config.env') });
+const nodeEnv = process.env['NODE_ENV'] || 'development';
+const configFile =
+  nodeEnv === 'production'
+    ? path.join(configDir, 'config.env')
+    : path.join(configDir, 'config.dev.env');
+dotenv.config({ path: configFile });
 
 // PostgreSQL Direct Connection Configuration
 const postgresConfig = {
@@ -15,9 +21,12 @@ const postgresConfig = {
   user: process.env['POSTGRES_USER'] || '',
   password: process.env['POSTGRES_PASSWORD'] || '',
   ssl: process.env['POSTGRES_SSL'] === 'true' ? { rejectUnauthorized: false } : false,
-  connectionTimeoutMillis: parseInt(process.env['POSTGRES_CONNECTION_TIMEOUT'] || '5000'),
-  query_timeout: parseInt(process.env['POSTGRES_QUERY_TIMEOUT'] || '10000'),
-  statement_timeout: parseInt(process.env['POSTGRES_QUERY_TIMEOUT'] || '10000'),
+  connectionTimeoutMillis: parseInt(process.env['POSTGRES_CONNECTION_TIMEOUT'] || '45000'),
+  query_timeout: parseInt(process.env['POSTGRES_QUERY_TIMEOUT'] || '30000'),
+  statement_timeout: parseInt(process.env['POSTGRES_QUERY_TIMEOUT'] || '30000'),
+  max: parseInt(process.env['POSTGRES_POOL_MAX'] || '10'),
+  idleTimeoutMillis: parseInt(process.env['POSTGRES_IDLE_TIMEOUT'] || '30000'),
+  keepAlive: true,
 };
 
 // Create PostgreSQL connection pool
@@ -28,6 +37,32 @@ postgresPool.on('error', (err) => {
   console.error('Unexpected error on idle PostgreSQL client', err);
   process.exit(-1);
 });
+
+const RETRIABLE_DB_CODES = new Set(['ETIMEDOUT', 'ECONNREFUSED', 'ECONNRESET', '57P01', '53300']);
+
+/** Obtiene un cliente del pool con reintentos ante fallos transitorios de red. */
+export async function acquirePoolClientWithRetry(
+  pool: Pool = postgresPool,
+  options: { maxAttempts?: number; delayMs?: number } = {}
+): Promise<PoolClient> {
+  const maxAttempts = options.maxAttempts ?? 5;
+  const delayMs = options.delayMs ?? 3000;
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await pool.connect();
+    } catch (error: any) {
+      lastError = error;
+      const code = error?.code as string | undefined;
+      if (!code || !RETRIABLE_DB_CODES.has(code) || attempt >= maxAttempts) break;
+      console.warn(`⚠️ Pool connect intento ${attempt}/${maxAttempts} falló (${code}), reintentando...`);
+      await new Promise((resolve) => setTimeout(resolve, delayMs * attempt));
+    }
+  }
+
+  throw lastError;
+}
 
 
 // Test PostgreSQL direct connection
